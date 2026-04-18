@@ -1,0 +1,17 @@
+# Node / Frontend
+node_modules/
+dist/
+
+# Backend / Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Blockchain / Hardhat
+blockchain/node_modules/
+blockchain/artifacts/
+blockchain/cache/

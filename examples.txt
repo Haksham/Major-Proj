@@ -1,0 +1,7 @@
+As a faculty member, I submit a refereed journal paper (Base 25 points). The ML service scores quality 82 and novelty 0.30. Final credits = 25 × (1 + 0.82) × (1 + 0.30) ≈ 59.5 credits.
+
+As a researcher, I file a patent application (Base 25). Quality 70, novelty 0.45. Final credits = 25 × (1 + 0.70) × (1 + 0.45) ≈ 61.6 credits.
+
+As an HoD, I review a national conference paper (Base 10). Quality 55, novelty 0.20. Final credits = 10 × (1 + 0.55) × (1 + 0.20) ≈ 18.6 credits.
+
+As an admin, I validate a granted patent (Base 50). Quality 90, novelty 0.50 (max). Final credits = 50 × (1 + 0.90) × (1 + 0.50) = 142.5 credits.

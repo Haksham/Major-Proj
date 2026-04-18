@@ -1,0 +1,194 @@
+version: "3.8"
+
+services:
+  # Hyperledger Besu Node 1 (Validator)
+  besu-node1:
+    image: hyperledger/besu:latest
+    container_name: salf-besu-node1
+    command:
+      - --config-file=/config/config.toml
+    volumes:
+      - ./blockchain/besu/node1:/opt/besu/data
+      - ./blockchain/besu/config:/config
+    ports:
+      - "8545:8545" # HTTP RPC
+      - "8546:8546" # WebSocket RPC
+      - "30303:30303" # P2P
+    networks:
+      - salf-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8545"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Hyperledger Besu Node 2 (Validator)
+  besu-node2:
+    image: hyperledger/besu:latest
+    container_name: salf-besu-node2
+    command:
+      - --config-file=/config/config.toml
+      - --bootnodes=enode://BOOTNODE_ENODE_URL
+    volumes:
+      - ./blockchain/besu/node2:/opt/besu/data
+      - ./blockchain/besu/config:/config
+    ports:
+      - "8547:8545"
+      - "8548:8546"
+      - "30304:30303"
+    networks:
+      - salf-network
+    depends_on:
+      - besu-node1
+
+  # IPFS Node
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: salf-ipfs
+    volumes:
+      - ./ipfs/data:/data/ipfs
+      - ./ipfs/staging:/staging
+    ports:
+      - "4001:4001" # P2P
+      - "5001:5001" # API
+      - "8080:8080" # Gateway
+    environment:
+      - IPFS_PROFILE=server
+    networks:
+      - salf-network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: salf-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-salf_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-salf_password}
+      POSTGRES_DB: ${POSTGRES_DB:-salf_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - salf-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-salf_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: salf-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - salf-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: salf-backend
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-salf_user}:${POSTGRES_PASSWORD:-salf_password}@postgres:5432/${POSTGRES_DB:-salf_db}
+      - REDIS_URL=redis://redis:6379
+      - BLOCKCHAIN_RPC_URL=http://besu-node1:8545
+      - IPFS_API_URL=http://ipfs:5001
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - ENVIRONMENT=production
+    volumes:
+      - ../backend:/app
+      - ml_models:/app/ml_models
+    ports:
+      - "8000:8000"
+    networks:
+      - salf-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      besu-node1:
+        condition: service_healthy
+      ipfs:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # React Frontend
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: salf-frontend
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_CHAIN_ID=0x539
+      - VITE_RPC_URL=http://localhost:8545
+    ports:
+      - "3000:80"
+    networks:
+      - salf-network
+    depends_on:
+      - backend
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: salf-nginx
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - salf-network
+    depends_on:
+      - backend
+      - frontend
+
+  # ML Model Service (Sentence-BERT)
+  ml-service:
+    build:
+      context: ../ml
+      dockerfile: Dockerfile
+    container_name: salf-ml-service
+    environment:
+      - MODEL_NAME=all-MiniLM-L6-v2
+      - DEVICE=cpu
+    volumes:
+      - ml_models:/models
+    ports:
+      - "8001:8001"
+    networks:
+      - salf-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+networks:
+  salf-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  ml_models:
