@@ -139,38 +139,37 @@ Get contributions with optional filters. **Requires authentication.**
 }
 ```
 
-#### POST `/contributions`
+#### POST `/contributions/submit`
 
-Submit a new contribution. **Requires authentication.**
+Submit a new contribution with a PDF upload. **Requires authentication (Faculty).**
 
-**Request Body:**
+**Content-Type:** `multipart/form-data`
 
-```json
-{
-  "title": "Novel Approach to Deep Learning",
-  "category": "JOURNAL_PAPER",
-  "description": "This paper presents a novel approach...",
-  "metadata": {
-    "journal_name": "IEEE Transactions",
-    "issn": "1234-5678",
-    "publication_date": "2024-01-01",
-    "doi": "10.1234/example",
-    "co_authors": ["Author B", "Author C"]
-  }
-}
-```
-
-**File Upload:** Use `multipart/form-data` to include document files.
+**Form Fields:**
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| category | string | yes | One of: `refereed_journal`, `international_book`, `national_book`, `book_chapter`, `international_lecture`, `national_conference`, `patent_filed`, `patent_granted`, `editorial_work`, `research_project` |
+| title | string | yes |  |
+| abstract | string | yes | Minimum 100 characters |
+| journal_name | string | no |  |
+| isbn | string | no |  |
+| issn | string | no |  |
+| doi | string | no |  |
+| co_authors | string | no | Comma-separated names |
+| file | file | yes | PDF only |
 
 **Response:**
 
 ```json
 {
-  "id": "uuid",
-  "blockchain_id": "0x...",
-  "ipfs_hash": "Qm...",
-  "status": "pending",
-  "message": "Contribution submitted successfully"
+  "id": 1,
+  "blockchain_id": 1,
+  "faculty_id": 1,
+  "category": "refereed_journal",
+  "title": "Novel Approach to Deep Learning",
+  "abstract": "…",
+  "ipfs_hash": "Qm…",
+  "status": "pending"
 }
 ```
 
@@ -279,7 +278,7 @@ Get pending contributions for review. **Requires HoD/Reviewer role.**
     {
       "id": "uuid",
       "faculty_name": "Dr. John Doe",
-      "title": "Research Paper Title",
+      "title": "Contribution Title",
       "category": "JOURNAL_PAPER",
       "submission_date": "2024-01-10T09:00:00Z",
       "ai_evaluation": {

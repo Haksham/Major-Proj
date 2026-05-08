@@ -176,6 +176,31 @@ class MockIPFSService(IPFSService):
     def __init__(self):
         self._storage: Dict[str, bytes] = {}
         self._connected = True
+
+    def _base58btc_encode(self, data: bytes) -> str:
+        alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+        num = int.from_bytes(data, "big")
+        encoded = ""
+        while num > 0:
+            num, rem = divmod(num, 58)
+            encoded = alphabet[rem] + encoded
+        # Preserve leading zeros as '1'
+        pad = 0
+        for b in data:
+            if b == 0:
+                pad += 1
+            else:
+                break
+        return ("1" * pad) + (encoded or "")
+
+    def _mock_cid_v0(self, content: bytes) -> str:
+        """
+        Generate a CIDv0 (base58btc) from content bytes.
+        CIDv0 = base58btc(multihash(sha2-256(content))).
+        """
+        digest = hashlib.sha256(content).digest()
+        multihash = b"\x12\x20" + digest  # sha2-256 (0x12) + 32 bytes (0x20)
+        return self._base58btc_encode(multihash)
     
     @property
     def is_connected(self) -> bool:
@@ -186,9 +211,9 @@ class MockIPFSService(IPFSService):
         file_content: bytes,
         filename: str
     ) -> Dict[str, Any]:
-        # Generate a mock CID based on content hash
+        # Generate a deterministic CIDv0-like identifier (not published to public IPFS)
         content_hash = self.calculate_sha256(file_content)
-        mock_cid = f"Qm{content_hash[:44]}"  # Simulate IPFS CID format
+        mock_cid = self._mock_cid_v0(file_content)
         
         self._storage[mock_cid] = file_content
         
@@ -197,7 +222,8 @@ class MockIPFSService(IPFSService):
             "size": len(file_content),
             "filename": filename,
             "metadata_hash": content_hash,
-            "gateway_url": f"{settings.IPFS_GATEWAY}{mock_cid}"
+            # Expose via API proxy route (works for mock + real IPFS)
+            "gateway_url": f"{settings.API_V1_PREFIX}/contributions/ipfs/{mock_cid}"
         }
     
     async def get_file(self, cid: str) -> bytes:

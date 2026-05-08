@@ -64,8 +64,13 @@ export const authAPI = {
  */
 export const contributionsAPI = {
   // Submit a new contribution
-  submit: (contributionData) =>
-    api.post("/contributions/submit", contributionData),
+  submit: (contributionData) => {
+    const isFormData =
+      typeof FormData !== "undefined" && contributionData instanceof FormData;
+    return api.post("/contributions/submit", contributionData, {
+      headers: isFormData ? { "Content-Type": "multipart/form-data" } : undefined,
+    });
+  },
 
   // Get contribution by ID
   getById: (id) => api.get(`/contributions/${id}`),

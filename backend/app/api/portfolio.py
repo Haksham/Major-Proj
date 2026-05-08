@@ -80,6 +80,27 @@ async def get_portfolio_summary(
         credits_by_category=portfolio["credits_by_category"]
     )
 
+@router.get("/me", response_model=PortfolioDetail)
+async def get_my_portfolio(
+    user: dict = Depends(get_current_user),
+):
+    """
+    Backwards-compatible alias for the frontend.
+    Returns the same payload as `/portfolio/detail`.
+    """
+    return await get_portfolio_detail(user)
+
+
+@router.get("/statistics", response_model=PortfolioSummary)
+async def get_portfolio_statistics(
+    user: dict = Depends(get_current_user),
+):
+    """
+    Backwards-compatible alias for the frontend.
+    Returns the same payload as `/portfolio/summary`.
+    """
+    return await get_portfolio_summary(user)
+
 
 @router.get("/detail", response_model=PortfolioDetail)
 async def get_portfolio_detail(

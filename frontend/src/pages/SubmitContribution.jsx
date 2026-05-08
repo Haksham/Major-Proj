@@ -13,64 +13,64 @@ import clsx from "clsx";
 
 const CATEGORIES = [
   {
-    value: 0,
-    label: "Research Paper",
-    description: "Academic research publications",
+    value: "refereed_journal",
+    label: "Refereed Journal",
+    description: "Peer-reviewed journal publication",
     basePoints: 25,
   },
   {
-    value: 1,
-    label: "Journal Publication",
-    description: "Published in academic journals",
-    basePoints: 25,
-  },
-  {
-    value: 2,
-    label: "Book",
-    description: "Full book publications",
+    value: "international_book",
+    label: "International Book",
+    description: "International book publication",
     basePoints: 30,
   },
   {
-    value: 3,
-    label: "Book Chapter",
-    description: "Chapter contributions to books",
-    basePoints: 10,
-  },
-  {
-    value: 4,
-    label: "Patent",
-    description: "Filed or granted patents",
-    basePoints: 50,
-  },
-  {
-    value: 5,
-    label: "Conference",
-    description: "Conference presentations",
-    basePoints: 10,
-  },
-  {
-    value: 6,
-    label: "Workshop",
-    description: "Workshop facilitation",
-    basePoints: 5,
-  },
-  {
-    value: 7,
-    label: "Seminar",
-    description: "Seminar presentations",
-    basePoints: 5,
-  },
-  {
-    value: 8,
-    label: "Project",
-    description: "Funded research projects",
+    value: "national_book",
+    label: "National Book",
+    description: "National book publication",
     basePoints: 20,
   },
   {
-    value: 9,
-    label: "Award",
-    description: "Academic awards and recognition",
+    value: "book_chapter",
+    label: "Book Chapter",
+    description: "Chapter contribution to a book",
+    basePoints: 5,
+  },
+  {
+    value: "international_lecture",
+    label: "International Lecture",
+    description: "International lecture / invited talk",
+    basePoints: 7,
+  },
+  {
+    value: "national_conference",
+    label: "National Conference",
+    description: "National conference presentation",
+    basePoints: 10,
+  },
+  {
+    value: "patent_filed",
+    label: "Patent Filed",
+    description: "Patent filed",
     basePoints: 15,
+  },
+  {
+    value: "patent_granted",
+    label: "Patent Granted",
+    description: "Patent granted",
+    basePoints: 30,
+  },
+  {
+    value: "editorial_work",
+    label: "Editorial Work",
+    description: "Editorial board / reviewing responsibilities",
+    basePoints: 10,
+  },
+  {
+    value: "research_project",
+    label: "Research Project",
+    description: "Funded research project",
+    basePoints: 20,
   },
 ];
 
@@ -81,7 +81,7 @@ function SubmitContribution() {
 
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
-    category: 0,
+    category: "refereed_journal",
     title: "",
     description: "",
     abstract: "",
@@ -108,16 +108,16 @@ function SubmitContribution() {
   const handleFileSelect = (e) => {
     const selectedFiles = Array.from(e.target.files);
     const validFiles = selectedFiles.filter((file) => {
-      const validTypes = [
-        "application/pdf",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      ];
-      const maxSize = 10 * 1024 * 1024; // 10MB
+      const validTypes = ["application/pdf"];
+      const maxSize = 50 * 1024 * 1024; // 50MB (matches backend default)
       return validTypes.includes(file.type) && file.size <= maxSize;
     });
 
-    setFiles((prev) => [...prev, ...validFiles]);
+    setFiles(validFiles.slice(0, 1));
+
+    if (validationErrors.file) {
+      setValidationErrors((prev) => ({ ...prev, file: null }));
+    }
   };
 
   const removeFile = (index) => {
@@ -140,11 +140,18 @@ function SubmitContribution() {
     }
 
     if (currentStep === 2) {
-      if (
-        !formData.abstract.trim() &&
-        [0, 1, 2, 3, 5].includes(formData.category)
-      ) {
-        errors.abstract = "Abstract is required for this contribution type";
+      if (!formData.abstract.trim()) {
+        errors.abstract = "Abstract is required";
+      } else if (formData.abstract.trim().length < 100) {
+        errors.abstract = "Abstract must be at least 100 characters";
+      }
+    }
+
+    if (currentStep === 3) {
+      if (files.length === 0) {
+        errors.file = "Please upload a PDF file";
+      } else if (files.length > 1) {
+        errors.file = "Please upload only one PDF file";
       }
     }
 
@@ -166,22 +173,17 @@ function SubmitContribution() {
     if (!validateStep(step)) return;
 
     try {
-      const contributionData = {
-        ...formData,
-        keywords: formData.keywords
-          .split(",")
-          .map((k) => k.trim())
-          .filter(Boolean),
-        authors: formData.authors
-          .split(",")
-          .map((a) => a.trim())
-          .filter(Boolean),
-      };
+      const pdf = files[0];
+      const fd = new FormData();
+      fd.append("category", formData.category);
+      fd.append("title", formData.title);
+      fd.append("abstract", formData.abstract);
+      fd.append("doi", formData.doi || "");
+      fd.append("journal_name", formData.publication_venue || "");
+      fd.append("co_authors", formData.authors || "");
+      fd.append("file", pdf, pdf.name);
 
-      // TODO: Upload files to IPFS first and get hash
-      // For now, we'll submit without file upload
-
-      await submitContribution(contributionData);
+      await submitContribution(fd);
       setSubmitSuccess(true);
 
       // Redirect after success
@@ -221,7 +223,7 @@ function SubmitContribution() {
                 setSubmitSuccess(false);
                 setStep(1);
                 setFormData({
-                  category: 0,
+                  category: "refereed_journal",
                   title: "",
                   description: "",
                   abstract: "",
@@ -400,12 +402,7 @@ function SubmitContribution() {
         {step === 2 && (
           <div className="space-y-6">
             <div>
-              <label className="label">
-                Abstract{" "}
-                {[0, 1, 2, 3, 5].includes(formData.category)
-                  ? "*"
-                  : "(Optional)"}
-              </label>
+              <label className="label">Abstract *</label>
               <textarea
                 name="abstract"
                 value={formData.abstract}
@@ -497,8 +494,7 @@ function SubmitContribution() {
             <div>
               <label className="label">Upload Supporting Documents</label>
               <p className="text-sm text-gray-500 mb-4">
-                Upload PDF or Word documents (max 10MB each). Files will be
-                stored on IPFS.
+                Upload a single PDF (max 50MB). The file will be stored on IPFS.
               </p>
 
               <div
@@ -510,17 +506,21 @@ function SubmitContribution() {
                   Click to upload or drag and drop
                 </p>
                 <p className="text-sm text-gray-400">
-                  PDF, DOC, DOCX up to 10MB
+                  PDF up to 50MB
                 </p>
               </div>
               <input
                 ref={fileInputRef}
                 type="file"
-                multiple
-                accept=".pdf,.doc,.docx"
+                accept=".pdf,application/pdf"
                 onChange={handleFileSelect}
                 className="hidden"
               />
+              {validationErrors.file && (
+                <p className="mt-2 text-sm text-red-600">
+                  {validationErrors.file}
+                </p>
+              )}
             </div>
 
             {files.length > 0 && (

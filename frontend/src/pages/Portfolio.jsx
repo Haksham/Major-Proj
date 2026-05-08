@@ -33,7 +33,7 @@ import {
 import clsx from "clsx";
 
 const CATEGORY_NAMES = [
-  "Research Paper",
+  "Guest Lectures",
   "Journal",
   "Book",
   "Book Chapter",
@@ -43,6 +43,7 @@ const CATEGORY_NAMES = [
   "Seminar",
   "Project",
   "Award",
+  "Faculty Development Program",
 ];
 
 function Portfolio() {

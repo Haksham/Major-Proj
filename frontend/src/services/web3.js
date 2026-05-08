@@ -398,7 +398,7 @@ export const web3Service = new Web3Service();
 
 // Category mappings
 export const CONTRIBUTION_CATEGORIES = {
-  0: "Research Paper",
+  0: "Guest Lectures",
   1: "Journal Publication",
   2: "Book",
   3: "Book Chapter",
@@ -408,6 +408,7 @@ export const CONTRIBUTION_CATEGORIES = {
   7: "Seminar",
   8: "Project",
   9: "Award",
+  10: "Faculty Development Program",
 };
 
 export const CONTRIBUTION_STATUS = {
@@ -419,7 +420,7 @@ export const CONTRIBUTION_STATUS = {
 };
 
 export const UGC_BASE_POINTS = {
-  0: 25, // Research Paper
+  0: 25, // Guest Lectures
   1: 25, // Journal Publication
   2: 30, // Book (International)
   3: 10, // Book Chapter
@@ -429,6 +430,7 @@ export const UGC_BASE_POINTS = {
   7: 5, // Seminar
   8: 20, // Project
   9: 15, // Award
+  10: 0, // Faculty Development Program
 };
 
 export default web3Service;

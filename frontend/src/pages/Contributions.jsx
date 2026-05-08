@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { useContributionStore } from "../store";
+import { useAuthStore, useContributionStore } from "../store";
 import {
   PlusIcon,
   FunnelIcon,
@@ -12,7 +12,7 @@ import {
 import clsx from "clsx";
 
 const CATEGORY_NAMES = [
-  "Research Paper",
+  "Guest Lectures",
   "Journal Publication",
   "Book",
   "Book Chapter",
@@ -22,6 +22,7 @@ const CATEGORY_NAMES = [
   "Seminar",
   "Project",
   "Award",
+  "Faculty Development Program",
 ];
 
 const STATUS_OPTIONS = [
@@ -44,6 +45,7 @@ const CATEGORY_OPTIONS = [
 function Contributions() {
   const { contributions, fetchContributions, isLoading } =
     useContributionStore();
+  const token = useAuthStore((s) => s.token);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -64,6 +66,31 @@ function Contributions() {
 
     return matchesSearch && matchesStatus && matchesCategory;
   });
+
+  const openDocument = async (cid) => {
+    if (!cid) return;
+    if (!token) throw new Error("You must be logged in to view documents");
+
+    const response = await fetch(`/api/v1/contributions/ipfs/${cid}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      let message = "Failed to load document";
+      try {
+        const data = await response.json();
+        if (typeof data?.detail === "string") message = data.detail;
+      } catch {
+        // ignore JSON parse errors
+      }
+      throw new Error(message);
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
 
   return (
     <div className="space-y-6">
@@ -142,6 +169,7 @@ function Contributions() {
               key={contribution.id}
               contribution={contribution}
               onView={() => setSelectedContribution(contribution)}
+              onViewDocument={() => openDocument(contribution.ipfs_hash)}
             />
           ))}
         </div>
@@ -174,6 +202,7 @@ function Contributions() {
         <ContributionDetailModal
           contribution={selectedContribution}
           onClose={() => setSelectedContribution(null)}
+          onViewDocument={() => openDocument(selectedContribution.ipfs_hash)}
         />
       )}
     </div>
@@ -181,7 +210,7 @@ function Contributions() {
 }
 
 // Contribution Card Component
-function ContributionCard({ contribution, onView }) {
+function ContributionCard({ contribution, onView, onViewDocument }) {
   const statusConfig = {
     pending: { label: "Pending", class: "badge-pending" },
     under_review: { label: "Under Review", class: "badge-pending" },
@@ -245,15 +274,14 @@ function ContributionCard({ contribution, onView }) {
             View
           </button>
           {contribution.ipfs_hash && (
-            <a
-              href={`https://ipfs.io/ipfs/${contribution.ipfs_hash}`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={onViewDocument}
               className="btn-secondary inline-flex items-center text-sm"
             >
               <DocumentArrowDownIcon className="h-4 w-4 mr-1" />
               Document
-            </a>
+            </button>
           )}
         </div>
       </div>
@@ -262,7 +290,7 @@ function ContributionCard({ contribution, onView }) {
 }
 
 // Contribution Detail Modal
-function ContributionDetailModal({ contribution, onClose }) {
+function ContributionDetailModal({ contribution, onClose, onViewDocument }) {
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
@@ -358,14 +386,13 @@ function ContributionDetailModal({ contribution, onClose }) {
               Close
             </button>
             {contribution.ipfs_hash && (
-              <a
-                href={`https://ipfs.io/ipfs/${contribution.ipfs_hash}`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={onViewDocument}
                 className="btn-primary"
               >
                 View Document
-              </a>
+              </button>
             )}
           </div>
         </div>

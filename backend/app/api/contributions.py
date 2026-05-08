@@ -4,8 +4,9 @@ Academic contribution management endpoints
 """
 from datetime import datetime
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Form, BackgroundTasks
 import hashlib
+from fastapi.responses import Response
 
 from app.schemas.schemas import (
     ContributionCreate, ContributionResponse, ContributionReview,
@@ -39,9 +40,70 @@ UGC_POINTS = {
     ContributionCategory.RESEARCH_PROJECT: settings.UGC_RESEARCH_PROJECT,
 }
 
+async def _run_ai_evaluation(contribution_id: int) -> None:
+    """
+    Run REM evaluation and store results on the in-memory contribution.
+    Keeps submission fast by moving model load/embedding work off the request path.
+    """
+    contribution = _contributions.get(contribution_id)
+    if not contribution:
+        return
+
+    try:
+        evaluation = rem_service.evaluate_abstract(contribution["abstract"])
+        quality_score = evaluation.get("quality_score", 0) or 0
+        novelty_percentage = evaluation.get("novelty_percentage", 0) or 0
+
+        base_credits = contribution.get("base_credits") or UGC_POINTS.get(contribution["category"], 0)
+        calculated_credits = rem_service.calculate_final_credits(
+            base_credits, quality_score, novelty_percentage
+        )
+
+        contribution["ai_quality_score"] = quality_score
+        contribution["novelty_percentage"] = novelty_percentage
+        contribution["base_credits"] = base_credits
+        contribution["calculated_credits"] = calculated_credits
+        contribution["evaluation_details"] = {
+            "benchmark_scores": evaluation.get("benchmark_scores", {}),
+            "keywords_found": evaluation.get("keywords_found", []),
+            "abstract_length": evaluation.get("abstract_length"),
+            "evaluation_version": evaluation.get("evaluation_version"),
+        }
+        contribution.pop("evaluation_error", None)
+    except Exception as e:
+        # Don't fail the submission; store error for debugging.
+        contribution["evaluation_error"] = str(e)
+
+
+@router.get("/ipfs/{cid}")
+async def get_ipfs_file(
+    cid: str,
+    user: dict = Depends(require_faculty),
+):
+    """
+    Retrieve a contribution file by CID via the configured IPFS service.
+    Works in both real-IPFS and mock-IPFS modes.
+    """
+    try:
+        content = await ipfs_service.get_file(cid)
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CID not found")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to retrieve from IPFS: {str(e)}",
+        )
+
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{cid}.pdf"'},
+    )
+
 
 @router.post("/submit", response_model=ContributionResponse)
 async def submit_contribution(
+    background_tasks: BackgroundTasks,
     category: ContributionCategory = Form(...),
     title: str = Form(...),
     abstract: str = Form(...),
@@ -124,19 +186,11 @@ async def submit_contribution(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload to IPFS: {str(e)}"
         )
-    
     # Step 3: AI Evaluation (REM)
-    evaluation = rem_service.evaluate_abstract(abstract)
-    quality_score = evaluation["quality_score"]
-    novelty_percentage = evaluation["novelty_percentage"]
-    
-    # Step 4: Calculate credits
+    # Run asynchronously to avoid long request times (model load + embeddings).
     base_credits = UGC_POINTS.get(category, 0)
-    final_credits = rem_service.calculate_final_credits(
-        base_credits, quality_score, novelty_percentage
-    )
     
-    # Step 5: Create contribution record
+    # Step 4: Create contribution record
     _contribution_counter += 1
     contribution_id = _contribution_counter
     
@@ -158,11 +212,11 @@ async def submit_contribution(
         "doi": doi,
         "co_authors": co_authors,
         "status": ContributionStatus.FLAGGED if fraud_result["is_flagged"] else ContributionStatus.PENDING,
-        "ai_quality_score": quality_score,
-        "novelty_percentage": novelty_percentage,
+        "ai_quality_score": 0,
+        "novelty_percentage": 0,
         "base_credits": base_credits,
         "final_credits": 0,  # Set after validation
-        "calculated_credits": final_credits,  # Pending approval
+        "calculated_credits": 0,  # Filled by background AI evaluation
         "reviewer_id": None,
         "review_notes": None,
         "review_time": None,
@@ -176,8 +230,11 @@ async def submit_contribution(
     }
     
     _contributions[contribution_id] = contribution
+
+    # Kick off AI evaluation in background
+    background_tasks.add_task(_run_ai_evaluation, contribution_id)
     
-    # Step 6: Submit to blockchain (async)
+    # Step 5: Submit to blockchain (async)
     try:
         if blockchain_service.is_connected:
             # Map category to enum value
@@ -367,14 +424,32 @@ async def get_evaluation_details(
             detail="Contribution not found"
         )
     
-    # Re-run evaluation to get full details
-    evaluation = rem_service.evaluate_abstract(contribution["abstract"])
+    # Prefer cached evaluation details if available
+    cached = contribution.get("evaluation_details")
+    if cached and not contribution.get("evaluation_error"):
+        quality_score = contribution.get("ai_quality_score", 0)
+        novelty_percentage = contribution.get("novelty_percentage", 0)
+        benchmark_scores = cached.get("benchmark_scores", {})
+    else:
+        # Fallback: compute on-demand (can be slow on first run)
+        evaluation = rem_service.evaluate_abstract(contribution["abstract"])
+        quality_score = evaluation.get("quality_score", 0)
+        novelty_percentage = evaluation.get("novelty_percentage", 0)
+        benchmark_scores = evaluation.get("benchmark_scores", {})
+        contribution["ai_quality_score"] = quality_score
+        contribution["novelty_percentage"] = novelty_percentage
+        contribution["evaluation_details"] = {
+            "benchmark_scores": benchmark_scores,
+            "keywords_found": evaluation.get("keywords_found", []),
+            "abstract_length": evaluation.get("abstract_length"),
+            "evaluation_version": evaluation.get("evaluation_version"),
+        }
     
     return EvaluationResponse(
         contribution_id=contribution_id,
-        quality_score=evaluation["quality_score"],
-        novelty_percentage=evaluation["novelty_percentage"],
-        benchmark_scores=evaluation.get("benchmark_scores", {}),
+        quality_score=quality_score,
+        novelty_percentage=novelty_percentage,
+        benchmark_scores=benchmark_scores,
         fraud_probability=contribution["fraud_score"],
         is_flagged=contribution["is_flagged"],
         flag_reasons=contribution.get("fraud_reasons", [])

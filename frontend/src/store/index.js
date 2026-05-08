@@ -143,6 +143,11 @@ export const useAuthStore = create(
         walletAddress: state.walletAddress,
         user: state.user,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        const walletAddress = state.walletAddress;
+        state.isConnected = !!walletAddress;
+      },
     },
   ),
 );
@@ -198,18 +203,30 @@ export const useContributionStore = create((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
+      const isFormData =
+        typeof FormData !== "undefined" && contributionData instanceof FormData;
+
       const response = await fetch("/api/v1/contributions/submit", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
+          ...(isFormData ? {} : { "Content-Type": "application/json" }),
         },
-        body: JSON.stringify(contributionData),
+        body: isFormData ? contributionData : JSON.stringify(contributionData),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to submit contribution");
+        let errorMessage = "Failed to submit contribution";
+        try {
+          const errorData = await response.json();
+          if (typeof errorData?.detail === "string") errorMessage = errorData.detail;
+          if (Array.isArray(errorData?.detail) && errorData.detail[0]?.msg) {
+            errorMessage = errorData.detail[0].msg;
+          }
+        } catch {
+          // ignore JSON parse errors
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();

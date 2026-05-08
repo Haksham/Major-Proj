@@ -175,12 +175,22 @@ async def get_current_user_info(user: dict = Depends(get_current_user)):
     """
     address = user.get("address")
     user_data = _users.get(address)
-    
     if not user_data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+        # In-memory store may be cleared on server restart; rehydrate a minimal user
+        user_data = {
+            "id": user.get("faculty_id") or (len(_users) + 1),
+            "wallet_address": address,
+            "name": f"Faculty_{address[:8]}",
+            "email": None,
+            "role": user.get("role") or "faculty",
+            "department_id": None,
+            "is_active": True,
+            "total_credits": 0,
+            "employee_id": None,
+            "institution": None,
+            "created_at": datetime.utcnow(),
+        }
+        _users[address] = user_data
     
     return UserResponse(
         id=user_data["id"],
@@ -193,7 +203,7 @@ async def get_current_user_info(user: dict = Depends(get_current_user)):
         department_id=user_data.get("department_id"),
         is_active=user_data["is_active"],
         total_credits=user_data["total_credits"],
-        created_at=None
+        created_at=user_data.get("created_at") or datetime.utcnow()
     )
 
 
