@@ -164,6 +164,7 @@ class Contribution(Base):
     # Timestamps
     submission_time = Column(DateTime, default=datetime.utcnow)
     blockchain_tx_hash = Column(String(100))
+    review_tx_hash = Column(String(100))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

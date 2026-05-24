@@ -127,6 +127,7 @@ export const profileAPI = {
 
 export const transactionsAPI = {
   lookup: (q) => api.get("/transactions/lookup", { params: { q } }),
+  backfill: () => api.post("/transactions/backfill"),
 };
 
 export default api;

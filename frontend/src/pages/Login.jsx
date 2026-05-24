@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store";
 import { web3Service } from "../services/web3";
+import { formatWalletError } from "../utils/formatWalletError";
 import { authAPI, institutesAPI } from "../services/api";
 import { BuildingLibraryIcon, UserGroupIcon } from "@heroicons/react/24/outline";
 import {
@@ -59,7 +60,7 @@ function Login() {
       useAuthStore.getState().setWalletAddress(address);
       setStep(2);
     } catch (err) {
-      setError(err.message);
+      setError(formatWalletError(err));
     }
   };
 
@@ -78,7 +79,7 @@ function Login() {
       if (result) navigate("/dashboard");
       else if (useAuthStore.getState().needsRegistration) setRegMode("choice");
     } catch (err) {
-      setError(err.message);
+      setError(formatWalletError(err));
       setStep(2);
     }
   };

@@ -9,9 +9,11 @@ import {
   UserCircleIcon,
   ClipboardDocumentIcon,
   InformationCircleIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 import { transactionsAPI } from "../services/api";
+import { useAuthStore } from "../store";
 
 const EVENT_CONFIG = {
   submission: {

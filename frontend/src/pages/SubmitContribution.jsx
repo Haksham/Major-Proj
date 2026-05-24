@@ -95,6 +95,7 @@ function SubmitContribution() {
   const [files, setFiles] = useState([]);
   const [validationErrors, setValidationErrors] = useState({});
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [submissionResult, setSubmissionResult] = useState(null);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -184,7 +185,8 @@ function SubmitContribution() {
       fd.append("co_authors", formData.authors || "");
       fd.append("file", pdf, pdf.name);
 
-      await submitContribution(fd);
+      const result = await submitContribution(fd);
+      setSubmissionResult(result);
       setSubmitSuccess(true);
 
       // Redirect after success
@@ -203,8 +205,10 @@ function SubmitContribution() {
   if (submitSuccess) {
     return <SubmitSuccessScreen
       onViewContributions={() => navigate("/contributions")}
+      submission={submissionResult}
       onSubmitAnother={() => {
         setSubmitSuccess(false);
+        setSubmissionResult(null);
         setStep(1);
         setFormData({
           category: "refereed_journal",
@@ -655,7 +659,7 @@ function SubmitContribution() {
 
 const EVAL_DELAY_MS = 60_000; // 1 minute
 
-function SubmitSuccessScreen({ onViewContributions, onSubmitAnother }) {
+function SubmitSuccessScreen({ submission, onViewContributions, onSubmitAnother }) {
   const [elapsed, setElapsed] = useState(0);
   const evaluating = elapsed < EVAL_DELAY_MS;
   const progress = Math.min(100, (elapsed / EVAL_DELAY_MS) * 100);
@@ -686,6 +690,8 @@ function SubmitSuccessScreen({ onViewContributions, onSubmitAnother }) {
               analysing quality and novelty scores…
             </p>
 
+            <TransactionSummary submission={submission} />
+
             <div className="mt-6 space-y-2">
               <div className="flex justify-between text-sm text-gray-500">
                 <span>AI Evaluation in progress</span>
@@ -713,6 +719,7 @@ function SubmitSuccessScreen({ onViewContributions, onSubmitAnother }) {
               Quality and novelty scores are ready. Your contribution is now
               pending HoD review.
             </p>
+            <TransactionSummary submission={submission} />
             <div className="mt-6 flex justify-center space-x-4">
               <button onClick={onViewContributions} className="btn-primary">
                 View Contributions
@@ -723,6 +730,41 @@ function SubmitSuccessScreen({ onViewContributions, onSubmitAnother }) {
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+function TransactionSummary({ submission }) {
+  if (!submission) return null;
+
+  return (
+    <div className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4 text-left">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            Contribution ID
+          </p>
+          <p className="mt-1 text-sm font-semibold text-gray-900">
+            #{submission.id}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            Blockchain ID
+          </p>
+          <p className="mt-1 text-sm font-semibold text-gray-900">
+            {submission.blockchain_id ?? "Pending"}
+          </p>
+        </div>
+      </div>
+      <div className="mt-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          Transaction ID
+        </p>
+        <p className="mt-1 break-all font-mono text-xs text-gray-700">
+          {submission.blockchain_tx_hash || "Blockchain transaction not available yet."}
+        </p>
       </div>
     </div>
   );

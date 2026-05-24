@@ -12,6 +12,10 @@ import {
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 
+function showActionResult(message, txHash) {
+  window.alert(txHash ? `${message}\n\nTransaction ID:\n${txHash}` : message);
+}
+
 function InstituteAdminPanel() {
   const location = useLocation();
 
@@ -130,7 +134,8 @@ function IAPending() {
   const handleApprove = async (wallet, name) => {
     setActing(wallet);
     try {
-      await instituteAdminAPI.approveUser(wallet);
+      const response = await instituteAdminAPI.approveUser(wallet);
+      showActionResult(`Approved ${name}.`, response.data?.blockchain_tx_hash);
       setPending((p) => p.filter((u) => u.wallet_address !== wallet));
     } catch (err) {
       alert(err.response?.data?.detail || `Failed to approve ${name}`);
@@ -313,11 +318,12 @@ function AddDeptModal({ onClose, onSuccess }) {
     setError(null);
     setIsSubmitting(true);
     try {
-      await instituteAdminAPI.createDepartment({
+      const response = await instituteAdminAPI.createDepartment({
         code: form.code.toUpperCase(),
         name: form.name,
         hod_wallet_address: form.hod_wallet_address || undefined,
       });
+      showActionResult("Department created successfully.", response.data?.blockchain_tx_hash);
       onSuccess();
       onClose();
     } catch (err) {
@@ -383,7 +389,8 @@ function IAFaculty() {
     if (!confirm(`Promote ${name} to HoD?`)) return;
     setActing(wallet);
     try {
-      await instituteAdminAPI.assignHod(wallet);
+      const response = await instituteAdminAPI.assignHod(wallet);
+      showActionResult(response.data?.message || `${name} promoted to HoD.`);
       load();
     } catch (err) {
       alert(err.response?.data?.detail || "Failed to assign HoD");

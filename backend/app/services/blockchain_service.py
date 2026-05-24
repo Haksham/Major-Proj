@@ -4,6 +4,7 @@ Web3 integration for Hyperledger Besu interaction
 """
 import json
 import os
+import secrets
 from typing import Optional, Dict, Any, List
 from web3 import Web3
 from web3.middleware import ExtraDataToPOAMiddleware
@@ -91,9 +92,16 @@ class BlockchainService:
         signed_tx = self.w3.eth.account.sign_transaction(tx, settings.BESU_PRIVATE_KEY)
         tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
         receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
-        
+
+        mined = receipt.transactionHash.hex()
+        demo_id = "0x" + secrets.token_hex(32)
+        print(
+            f"[SALF blockchain] console_transaction_id={demo_id} chain_transaction_id={mined} "
+            f"status={'ok' if receipt.status == 1 else 'failed'}"
+        )
+
         return {
-            "tx_hash": receipt.transactionHash.hex(),
+            "tx_hash": mined,
             "block_number": receipt.blockNumber,
             "gas_used": receipt.gasUsed,
             "status": "success" if receipt.status == 1 else "failed"
@@ -214,6 +222,69 @@ class BlockchainService:
         return contract.functions.getFacultyContributions(
             self.w3.to_checksum_address(faculty_address)
         ).call()
+
+    def resolve_contribution_id_by_ipfs(
+        self, ipfs_hash: str, faculty_address: Optional[str] = None
+    ) -> Optional[int]:
+        """Find contributionId by IPFS CID. Backend submitRecord uses msg.sender as on-chain faculty, so the operator key is tried first."""
+        contract = self.contracts.get("academic_credit")
+        if not contract or not ipfs_hash:
+            return None
+
+        candidates: List[str] = []
+        if self.account:
+            candidates.append(self.account.address)
+        if faculty_address:
+            candidates.append(faculty_address)
+
+        seen = set()
+        for addr in candidates:
+            key = addr.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                raw_ids = contract.functions.getFacultyContributions(
+                    self.w3.to_checksum_address(addr)
+                ).call()
+                for cid in raw_ids:
+                    row = contract.functions.getContribution(int(cid)).call()
+                    if row[4] == ipfs_hash:
+                        return int(cid)
+            except Exception:
+                continue
+        return None
+
+    def get_contribution_chain_status(self, contribution_id: int) -> Optional[int]:
+        """On-chain ContributionStatus enum value (0=PENDING, 1=UNDER_REVIEW, ...), or None."""
+        contract = self.contracts.get("academic_credit")
+        if not contract:
+            return None
+        try:
+            row = contract.functions.getContribution(int(contribution_id)).call()
+            return int(row[7])
+        except Exception:
+            return None
+
+    async def ensure_pending_moves_to_under_review(
+        self,
+        contribution_id: int,
+        ai_quality_score: float,
+        novelty_percentage: float,
+    ) -> None:
+        """validateBlock() requires UNDER_REVIEW; recordEvaluation() moves PENDING → UNDER_REVIEW."""
+        contract = self.contracts.get("academic_credit")
+        if not contract:
+            return
+        try:
+            row = contract.functions.getContribution(int(contribution_id)).call()
+            if int(row[7]) != 0:
+                return
+        except Exception:
+            return
+        q = max(0, min(100, int(round(ai_quality_score or 0))))
+        n = max(0, min(100, int(round(novelty_percentage or 0))))
+        await self.record_evaluation(contribution_id, q, n)
     
     def get_faculty_total_credits(self, faculty_address: str) -> int:
         """Get total credits for a faculty member."""
@@ -311,10 +382,43 @@ class BlockchainService:
         contract = self.contracts.get("access_control")
         if not contract:
             raise ValueError("Access Control contract not loaded")
-        
+
         return contract.functions.isActiveFaculty(
             self.w3.to_checksum_address(address)
         ).call()
+
+    def get_review_tx_hash(self, blockchain_id: int, status: str) -> Optional[str]:
+        """
+        Query blockchain event logs to retrieve the tx hash for a review action.
+        Used to backfill review_tx_hash for contributions reviewed before that column existed.
+        """
+        contract = self.contracts.get("academic_credit")
+        if not contract:
+            return None
+
+        event_map = {
+            "validated": contract.events.ContributionValidated,
+            "validate": contract.events.ContributionValidated,
+            "rejected": contract.events.ContributionRejected,
+            "reject": contract.events.ContributionRejected,
+            "flagged": contract.events.ContributionFlagged,
+            "flag": contract.events.ContributionFlagged,
+        }
+        event_fn = event_map.get(status)
+        if not event_fn:
+            return None
+
+        try:
+            logs = event_fn().get_logs(
+                fromBlock=0,
+                toBlock="latest",
+                argument_filters={"contributionId": blockchain_id},
+            )
+            if logs:
+                return logs[0].transactionHash.hex()
+        except Exception:
+            pass
+        return None
 
 
 # Singleton instance

@@ -61,12 +61,12 @@ function Reviews() {
     const backendAction = action === "approve" ? "validate" : action;
 
     try {
-      await reviewContribution(selectedReview.id, {
+      const result = await reviewContribution(selectedReview.id, {
         action: backendAction,
         notes: reviewComment || "",
       });
-
-      setSelectedReview(null);
+      await fetchPendingReviews();
+      setSelectedReview((prev) => (prev ? { ...prev, ...result } : null));
       setReviewAction(null);
       setReviewComment("");
       setReviewError(null);
@@ -98,7 +98,7 @@ function Reviews() {
             Review and validate faculty contributions
           </p>
         </div>
-        <div className="mt-4 sm:mt-0 flex items-center space-x-4">
+        <div className="flex items-center mt-4 space-x-4 sm:mt-0">
           <div className="flex items-center space-x-2 text-sm text-gray-500">
             <span className="font-medium">{pendingReviews.length}</span>
             <span>pending reviews</span>
@@ -107,10 +107,10 @@ function Reviews() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="card bg-yellow-50 border-yellow-200">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="border-yellow-200 card bg-yellow-50">
           <div className="flex items-center space-x-3">
-            <ClipboardDocumentCheckIcon className="h-8 w-8 text-yellow-600" />
+            <ClipboardDocumentCheckIcon className="w-8 h-8 text-yellow-600" />
             <div>
               <p className="text-sm text-yellow-700">Pending Review</p>
               <p className="text-2xl font-bold text-yellow-900">
@@ -119,9 +119,9 @@ function Reviews() {
             </div>
           </div>
         </div>
-        <div className="card bg-blue-50 border-blue-200">
+        <div className="border-blue-200 card bg-blue-50">
           <div className="flex items-center space-x-3">
-            <DocumentMagnifyingGlassIcon className="h-8 w-8 text-blue-600" />
+            <DocumentMagnifyingGlassIcon className="w-8 h-8 text-blue-600" />
             <div>
               <p className="text-sm text-blue-700">Under Review</p>
               <p className="text-2xl font-bold text-blue-900">
@@ -133,9 +133,9 @@ function Reviews() {
             </div>
           </div>
         </div>
-        <div className="card bg-green-50 border-green-200">
+        <div className="border-green-200 card bg-green-50">
           <div className="flex items-center space-x-3">
-            <CheckCircleIcon className="h-8 w-8 text-green-600" />
+            <CheckCircleIcon className="w-8 h-8 text-green-600" />
             <div>
               <p className="text-sm text-green-700">AI Evaluated</p>
               <p className="text-2xl font-bold text-green-900">
@@ -149,7 +149,7 @@ function Reviews() {
       {/* Filter */}
       <div className="card">
         <div className="flex items-center space-x-4">
-          <FunnelIcon className="h-5 w-5 text-gray-400" />
+          <FunnelIcon className="w-5 h-5 text-gray-400" />
           <div className="flex space-x-2">
             {["all", "pending", "under_review"].map((filterOption) => (
               <button
@@ -183,8 +183,8 @@ function Reviews() {
           ))}
         </div>
       ) : (
-        <div className="card text-center py-12">
-          <ClipboardDocumentCheckIcon className="h-12 w-12 mx-auto text-gray-300" />
+        <div className="py-12 text-center card">
+          <ClipboardDocumentCheckIcon className="w-12 h-12 mx-auto text-gray-300" />
           <h3 className="mt-4 text-lg font-medium text-gray-900">
             No pending reviews
           </h3>
@@ -221,8 +221,8 @@ function Reviews() {
 // Review Card Component
 function ReviewCard({ review, onView }) {
   return (
-    <div className="card hover:shadow-md transition-shadow">
-      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+    <div className="transition-shadow card hover:shadow-md">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex-1">
           <div className="flex items-start justify-between">
             <div>
@@ -252,7 +252,7 @@ function ReviewCard({ review, onView }) {
             </p>
           )}
 
-          <div className="mt-4 flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4 mt-4">
             {review.ai_quality_score > 0 && (
               <>
                 <div className="text-sm">
@@ -281,8 +281,8 @@ function ReviewCard({ review, onView }) {
           </div>
 
           {review.fraud_flags && review.fraud_flags.length > 0 && (
-            <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-700 font-medium">
+            <div className="p-2 mt-3 border border-red-200 rounded-lg bg-red-50">
+              <p className="text-sm font-medium text-red-700">
                 ⚠️ Fraud Detection Flags:
               </p>
               <ul className="text-sm text-red-600 list-disc list-inside">
@@ -297,9 +297,9 @@ function ReviewCard({ review, onView }) {
         <div className="flex items-center space-x-2">
           <button
             onClick={onView}
-            className="btn-primary inline-flex items-center"
+            className="inline-flex items-center btn-primary"
           >
-            <EyeIcon className="h-4 w-4 mr-2" />
+            <EyeIcon className="w-4 h-4 mr-2" />
             Review
           </button>
         </div>
@@ -321,19 +321,22 @@ function ReviewModal({
   reviewError,
   isLoading,
 }) {
+  const isReviewComplete =
+    review.status === "validated" || review.status === "rejected";
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
         {/* Backdrop */}
         <div
-          className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+          className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"
           onClick={onClose}
         />
 
         {/* Modal */}
-        <div className="relative bg-white rounded-xl shadow-xl max-w-3xl w-full mx-auto overflow-hidden">
+        <div className="relative w-full max-w-3xl mx-auto overflow-hidden bg-white shadow-xl rounded-xl">
           {/* Header */}
-          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
             <h2 className="text-xl font-bold text-gray-900">
               Review Contribution
             </h2>
@@ -342,9 +345,40 @@ function ReviewModal({
           {/* Content */}
           <div className="px-6 py-4 max-h-[60vh] overflow-y-auto">
             <div className="space-y-4 text-left">
+              {isReviewComplete && (
+                <div
+                  className={clsx(
+                    "rounded-lg border p-4",
+                    review.status === "validated"
+                      ? "border-green-200 bg-green-50"
+                      : "border-red-200 bg-red-50",
+                  )}
+                >
+                  <p
+                    className={clsx(
+                      "font-medium",
+                      review.status === "validated"
+                        ? "text-green-900"
+                        : "text-red-900",
+                    )}
+                  >
+                    {review.status === "validated"
+                      ? "Contribution validated successfully."
+                      : "Contribution rejected."}
+                  </p>
+                  <p className="mt-2 text-xs font-medium uppercase tracking-wide text-gray-600">
+                    Transaction ID
+                  </p>
+                  <p className="mt-1 break-all font-mono text-sm text-gray-900">
+                    {review.review_tx_hash ||
+                      "Blockchain transaction not available for this action."}
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className="label">Title</label>
-                <p className="text-gray-900 font-medium">{review.title}</p>
+                <p className="font-medium text-gray-900">{review.title}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -354,7 +388,7 @@ function ReviewModal({
                 </div>
                 <div>
                   <label className="label">Submitted By</label>
-                  <p className="text-gray-900 font-mono text-sm">
+                  <p className="font-mono text-sm text-gray-900">
                     {review.faculty_address
                       ? `${review.faculty_address.slice(0, 10)}...${review.faculty_address.slice(-6)}`
                       : "—"}
@@ -370,7 +404,7 @@ function ReviewModal({
               {review.abstract && (
                 <div>
                   <label className="label">Abstract</label>
-                  <p className="text-gray-700 text-sm bg-gray-50 p-3 rounded-lg">
+                  <p className="p-3 text-sm text-gray-700 rounded-lg bg-gray-50">
                     {review.abstract}
                   </p>
                 </div>
@@ -383,7 +417,7 @@ function ReviewModal({
                   <button
                     type="button"
                     onClick={() => openDocument(review.ipfs_hash)}
-                    className="inline-flex items-center text-sm text-primary-600 hover:text-primary-700 font-medium underline"
+                    className="inline-flex items-center text-sm font-medium underline text-primary-600 hover:text-primary-700"
                   >
                     View uploaded document ↗
                   </button>
@@ -404,14 +438,34 @@ function ReviewModal({
                 </div>
               </div>
 
+              {(review.blockchain_tx_hash || review.review_tx_hash) && (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="label">Submission Transaction ID</label>
+                    <p className="font-mono text-xs text-gray-600 break-all">
+                      {review.blockchain_tx_hash || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="label">Review Transaction ID</label>
+                    <p className="font-mono text-xs text-gray-600 break-all">
+                      {review.review_tx_hash ||
+                        (isReviewComplete
+                          ? "—"
+                          : "Will appear after you submit this review")}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* AI Evaluation Results */}
               {review.ai_quality_score > 0 ? (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h4 className="font-medium text-blue-900 flex items-center">
-                    <CubeIcon className="h-5 w-5 mr-2" />
+                <div className="p-4 border border-blue-200 rounded-lg bg-blue-50">
+                  <h4 className="flex items-center font-medium text-blue-900">
+                    <CubeIcon className="w-5 h-5 mr-2" />
                     AI Evaluation Results
                   </h4>
-                  <div className="mt-3 grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-4 mt-3">
                     <div>
                       <p className="text-sm text-blue-700">Quality Score</p>
                       <p className="text-2xl font-bold text-blue-900">
@@ -427,15 +481,17 @@ function ReviewModal({
                   </div>
                 </div>
               ) : (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-700">
+                <div className="p-3 text-sm text-yellow-700 border border-yellow-200 rounded-lg bg-yellow-50">
                   AI evaluation is pending — scores will appear once processing completes.
                 </div>
               )}
 
+              {!isReviewComplete && (
+              <>
               {/* Review Action */}
-              <div className="border-t border-gray-200 pt-4">
+              <div className="pt-4 border-t border-gray-200">
                 <label className="label">Your Decision</label>
-                <div className="flex space-x-4 mt-2">
+                <div className="flex mt-2 space-x-4">
                   <button
                     onClick={() => setReviewAction("approve")}
                     className={clsx(
@@ -445,7 +501,7 @@ function ReviewModal({
                         : "border-gray-200 hover:border-green-300",
                     )}
                   >
-                    <CheckCircleIcon className="h-8 w-8 mx-auto text-green-500" />
+                    <CheckCircleIcon className="w-8 h-8 mx-auto text-green-500" />
                     <p className="mt-2 font-medium text-green-700">Approve</p>
                     <p className="text-sm text-gray-500">
                       Validate on blockchain
@@ -460,7 +516,7 @@ function ReviewModal({
                         : "border-gray-200 hover:border-red-300",
                     )}
                   >
-                    <XCircleIcon className="h-8 w-8 mx-auto text-red-500" />
+                    <XCircleIcon className="w-8 h-8 mx-auto text-red-500" />
                     <p className="mt-2 font-medium text-red-700">Reject</p>
                     <p className="text-sm text-gray-500">
                       Return with feedback
@@ -488,44 +544,60 @@ function ReviewModal({
                   className="input"
                 />
               </div>
+              </>
+              )}
+
+              {isReviewComplete && review.review_notes && (
+                <div className="pt-2 border-t border-gray-200">
+                  <label className="label">Review notes</label>
+                  <p className="text-sm text-gray-700">{review.review_notes}</p>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Footer */}
-          <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
+          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
             {reviewError && (
-              <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+              <div className="p-3 mb-3 text-sm text-red-600 border border-red-200 rounded bg-red-50">
                 {reviewError}
               </div>
             )}
             <div className="flex justify-end space-x-3">
+            {!isReviewComplete && (
             <button onClick={onClose} className="btn-secondary">
               Cancel
             </button>
-            {reviewAction === "approve" && (
+            )}
+            {isReviewComplete && (
+              <button type="button" onClick={onClose} className="btn-primary">
+                Close
+              </button>
+            )}
+            {!isReviewComplete && reviewAction === "approve" && (
               <button
                 onClick={onApprove}
                 disabled={isLoading}
-                className="btn-success flex items-center"
+                className="flex items-center btn-success"
               >
                 {isLoading ? (
-                  <div className="loader mr-2" />
+                  <div className="mr-2 loader" />
                 ) : (
-                  <CheckCircleIcon className="h-5 w-5 mr-2" />
+                  <CheckCircleIcon className="w-5 h-5 mr-2" />
                 )}
                 Approve & Validate
               </button>
             )}
-            {reviewAction === "reject" && (
+            {!isReviewComplete && reviewAction === "reject" && (
               <button
                 onClick={onReject}
                 disabled={isLoading}
-                className="btn-danger flex items-center"
+                className="flex items-center btn-danger"
               >
                 {isLoading ? (
-                  <div className="loader mr-2" />
+                  <div className="mr-2 loader" />
                 ) : (
-                  <XCircleIcon className="h-5 w-5 mr-2" />
+                  <XCircleIcon className="w-5 h-5 mr-2" />
                 )}
                 Reject Contribution
               </button>

@@ -43,6 +43,23 @@ async function main() {
   // Configure roles
   console.log("\n⚙️  Configuring roles...");
 
+  // Grant AcademicCreditLedger roles so the backend operator can submit (FACULTY),
+  // run REM evaluation step (REM), and validate/reject as HoD (HOD).
+  const operator = process.env.BESU_OPERATOR_ADDRESS || deployer.address;
+  const facultyRole = await creditLedger.FACULTY_ROLE();
+  const hodRole = await creditLedger.HOD_ROLE();
+  const remRole = await creditLedger.REM_ROLE();
+  await creditLedger.grantRole(facultyRole, operator);
+  await creditLedger.grantRole(hodRole, operator);
+  await creditLedger.grantRole(remRole, operator);
+  console.log(
+    "✅ Granted FACULTY_ROLE, HOD_ROLE, REM_ROLE on AcademicCreditLedger to",
+    operator,
+  );
+  console.log(
+    "   (set BESU_PRIVATE_KEY to this wallet's key; optional BESU_OPERATOR_ADDRESS if not deployer)\n",
+  );
+
   // Grant validator role to credit ledger in access control
   const VALIDATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("VALIDATOR_ROLE"));
   await accessControl.grantRole(VALIDATOR_ROLE, creditLedgerAddress);

@@ -45,6 +45,58 @@ UGC_POINTS = {
 }
 
 
+def _ledger_write_ready() -> bool:
+    return bool(
+        blockchain_service.is_connected
+        and blockchain_service.account
+        and blockchain_service.contracts.get("academic_credit")
+    )
+
+
+async def _ensure_blockchain_link(contribution: ContributionORM) -> None:
+    """Set contribution.blockchain_id by matching IPFS on-chain or registering if missing (mirrors submit flow)."""
+    if contribution.blockchain_id:
+        return
+    if not contribution.faculty_address or not contribution.ipfs_hash:
+        return
+
+    resolved = blockchain_service.resolve_contribution_id_by_ipfs(
+        contribution.ipfs_hash,
+        contribution.faculty_address,
+    )
+    if resolved is not None:
+        contribution.blockchain_id = resolved
+        return
+
+    if not contribution.metadata_hash:
+        return
+    try:
+        cat = ContributionCategory(contribution.category.value)
+        category_index = list(ContributionCategory).index(cat)
+    except ValueError:
+        return
+    try:
+        tx_result = await blockchain_service.submit_record(
+            category=category_index,
+            title=contribution.title,
+            ipfs_hash=contribution.ipfs_hash,
+            metadata_hash=contribution.metadata_hash,
+        )
+        new_id = tx_result.get("contribution_id")
+        if not new_id:
+            new_id = blockchain_service.resolve_contribution_id_by_ipfs(
+                contribution.ipfs_hash,
+                contribution.faculty_address,
+            )
+        if new_id:
+            contribution.blockchain_id = new_id
+        tx_hash = tx_result.get("tx_hash")
+        if tx_hash and not contribution.blockchain_tx_hash:
+            contribution.blockchain_tx_hash = tx_hash
+    except Exception as e:
+        print(f"Could not link contribution to chain before review: {e}")
+
+
 def _to_response(c: ContributionORM) -> ContributionResponse:
     return ContributionResponse(
         id=c.id,
@@ -66,6 +118,7 @@ def _to_response(c: ContributionORM) -> ContributionResponse:
         fraud_score=c.fraud_score or 0.0,
         is_flagged=c.is_flagged or False,
         blockchain_tx_hash=c.blockchain_tx_hash,
+        review_tx_hash=c.review_tx_hash,
     )
 
 
@@ -131,34 +184,6 @@ async def _run_ai_evaluation(contribution_id: int) -> None:
             print(f"Gatekeeper check skipped: {e}")
 
         await session.commit()
-
-
-async def _submit_to_blockchain(
-    contribution_id: int,
-    category: ContributionCategory,
-    title: str,
-    ipfs_hash: str,
-    metadata_hash: str,
-) -> None:
-    """Background task: submit the contribution record to the blockchain."""
-    async with AsyncSessionLocal() as session:
-        c = await session.get(ContributionORM, contribution_id)
-        if not c:
-            return
-        try:
-            if blockchain_service.is_connected:
-                category_index = list(ContributionCategory).index(category)
-                tx_result = await blockchain_service.submit_record(
-                    category=category_index,
-                    title=title,
-                    ipfs_hash=ipfs_hash,
-                    metadata_hash=metadata_hash,
-                )
-                c.blockchain_id = tx_result.get("contribution_id")
-                c.blockchain_tx_hash = tx_result.get("tx_hash")
-                await session.commit()
-        except Exception as e:
-            print(f"Blockchain submission failed: {e}")
 
 
 @router.get("/ipfs/{cid}")
@@ -279,9 +304,30 @@ async def submit_contribution(
             )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error during submission.")
 
-    # 4. AI evaluation + blockchain submission in background
+    # 4. Persist blockchain submission before returning so the caller can see the tx hash
+    try:
+        if _ledger_write_ready():
+            category_index = list(ContributionCategory).index(category)
+            tx_result = await blockchain_service.submit_record(
+                category=category_index,
+                title=title,
+                ipfs_hash=ipfs_hash,
+                metadata_hash=metadata_hash,
+            )
+            contribution.blockchain_id = tx_result.get("contribution_id")
+            if not contribution.blockchain_id:
+                contribution.blockchain_id = blockchain_service.resolve_contribution_id_by_ipfs(
+                    ipfs_hash,
+                    user["address"],
+                )
+            contribution.blockchain_tx_hash = tx_result.get("tx_hash")
+            await db.commit()
+            await db.refresh(contribution)
+    except Exception as e:
+        print(f"Blockchain submission failed: {e}")
+
+    # 5. AI evaluation continues in background
     background_tasks.add_task(_run_ai_evaluation, contribution.id)
-    background_tasks.add_task(_submit_to_blockchain, contribution.id, category, title, ipfs_hash, metadata_hash)
 
     return _to_response(contribution)
 
@@ -427,6 +473,9 @@ async def review_contribution(
             detail=f"Cannot review contribution with status: {c.status.value}",
         )
 
+    if _ledger_write_ready():
+        await _ensure_blockchain_link(c)
+
     now = datetime.utcnow()
 
     if review.action == "validate":
@@ -444,10 +493,30 @@ async def review_contribution(
             faculty_user.total_credits = (faculty_user.total_credits or 0) + c.final_credits
 
         try:
-            if blockchain_service.is_connected and c.blockchain_id:
-                await blockchain_service.validate_block(c.blockchain_id, review.notes)
+            if _ledger_write_ready() and c.blockchain_id:
+                st = blockchain_service.get_contribution_chain_status(c.blockchain_id)
+                if st == 2:
+                    c.review_tx_hash = blockchain_service.get_review_tx_hash(
+                        c.blockchain_id, "validated"
+                    )
+                else:
+                    await blockchain_service.ensure_pending_moves_to_under_review(
+                        c.blockchain_id,
+                        c.ai_quality_score or 0,
+                        c.novelty_percentage or 0,
+                    )
+                    tx_result = await blockchain_service.validate_block(
+                        c.blockchain_id, review.notes
+                    )
+                    c.review_tx_hash = tx_result.get("tx_hash")
+                    if not c.review_tx_hash:
+                        c.review_tx_hash = blockchain_service.get_review_tx_hash(
+                            c.blockchain_id, "validated"
+                        )
         except Exception as e:
             print(f"Blockchain validation failed: {e}")
+            if c.blockchain_id:
+                c.review_tx_hash = blockchain_service.get_review_tx_hash(c.blockchain_id, "validated")
 
     elif review.action == "reject":
         c.status = DBStatus.REJECTED
@@ -455,10 +524,15 @@ async def review_contribution(
         c.review_notes = review.notes
         c.review_time = now
         try:
-            if blockchain_service.is_connected and c.blockchain_id:
-                await blockchain_service.reject_contribution(c.blockchain_id, review.notes)
+            if _ledger_write_ready() and c.blockchain_id:
+                tx_result = await blockchain_service.reject_contribution(c.blockchain_id, review.notes)
+                c.review_tx_hash = tx_result.get("tx_hash")
+                if not c.review_tx_hash:
+                    c.review_tx_hash = blockchain_service.get_review_tx_hash(c.blockchain_id, "rejected")
         except Exception as e:
             print(f"Blockchain rejection failed: {e}")
+            if c.blockchain_id:
+                c.review_tx_hash = blockchain_service.get_review_tx_hash(c.blockchain_id, "rejected")
 
     elif review.action == "flag":
         c.status = DBStatus.FLAGGED
@@ -468,10 +542,15 @@ async def review_contribution(
         c.review_notes = review.notes
         c.review_time = now
         try:
-            if blockchain_service.is_connected and c.blockchain_id:
-                await blockchain_service.flag_contribution(c.blockchain_id, review.notes)
+            if _ledger_write_ready() and c.blockchain_id:
+                tx_result = await blockchain_service.flag_contribution(c.blockchain_id, review.notes)
+                c.review_tx_hash = tx_result.get("tx_hash")
+                if not c.review_tx_hash:
+                    c.review_tx_hash = blockchain_service.get_review_tx_hash(c.blockchain_id, "flagged")
         except Exception as e:
             print(f"Blockchain flagging failed: {e}")
+            if c.blockchain_id:
+                c.review_tx_hash = blockchain_service.get_review_tx_hash(c.blockchain_id, "flagged")
 
     await db.commit()
     await db.refresh(c)

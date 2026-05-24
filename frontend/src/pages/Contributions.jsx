@@ -435,8 +435,15 @@ function ContributionDetailModal({ contribution: initial, onClose, onViewDocumen
 
             {contribution.blockchain_tx_hash && (
               <div>
-                <label className="label">Blockchain Transaction</label>
+                <label className="label">Submission Transaction ID</label>
                 <p className="font-mono text-xs text-gray-500 break-all">{contribution.blockchain_tx_hash}</p>
+              </div>
+            )}
+
+            {contribution.review_tx_hash && (
+              <div>
+                <label className="label">Review Transaction ID</label>
+                <p className="font-mono text-xs text-gray-500 break-all">{contribution.review_tx_hash}</p>
               </div>
             )}
 

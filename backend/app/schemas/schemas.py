@@ -82,6 +82,7 @@ class DepartmentResponse(BaseModel):
     hod_id: Optional[int]
     is_active: bool
     created_at: datetime
+    blockchain_tx_hash: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -173,6 +174,7 @@ class UserResponse(UserBase):
     is_active: bool
     total_credits: float
     created_at: datetime
+    blockchain_tx_hash: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -216,6 +218,7 @@ class ContributionResponse(BaseModel):
     fraud_score: float
     is_flagged: bool
     blockchain_tx_hash: Optional[str]
+    review_tx_hash: Optional[str] = None
 
     class Config:
         from_attributes = True

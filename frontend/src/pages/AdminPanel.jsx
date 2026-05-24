@@ -13,6 +13,10 @@ import {
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 
+function showActionResult(message, txHash) {
+  window.alert(txHash ? `${message}\n\nTransaction ID:\n${txHash}` : message);
+}
+
 function AdminPanel() {
   const location = useLocation();
 
@@ -229,6 +233,7 @@ function AddInstitutionModal({ onClose, onSuccess }) {
         name: form.name,
         admin_address: form.admin_address || undefined,
       });
+      showActionResult("Institution created successfully.");
       onSuccess();
       onClose();
     } catch (err) {
@@ -350,12 +355,13 @@ function AddDepartmentModal({ onClose, onSuccess }) {
     setError(null);
     setIsSubmitting(true);
     try {
-      await adminAPI.createDepartment({
+      const response = await adminAPI.createDepartment({
         institution_id: parseInt(form.institution_id),
         code: form.code.toUpperCase(),
         name: form.name,
         hod_wallet_address: form.hod_wallet_address || undefined,
       });
+      showActionResult("Department created successfully.", response.data?.blockchain_tx_hash);
       onSuccess();
       onClose();
     } catch (err) {
@@ -554,7 +560,7 @@ function AddUserModal({ onClose, onSuccess }) {
     setError(null);
     setIsSubmitting(true);
     try {
-      await adminAPI.createUser({
+      const response = await adminAPI.createUser({
         wallet_address: form.wallet_address,
         name: form.name,
         email: form.email || undefined,
@@ -564,6 +570,7 @@ function AddUserModal({ onClose, onSuccess }) {
         institution_id: form.institution_id ? parseInt(form.institution_id) : undefined,
         department_code: form.department_code || undefined,
       });
+      showActionResult("User created successfully.", response.data?.blockchain_tx_hash);
       onSuccess();
       onClose();
     } catch (err) {
@@ -672,7 +679,8 @@ function PendingApprovals() {
   const handleApprove = async (walletAddress, name) => {
     setApproving(walletAddress);
     try {
-      await adminAPI.approveUser(walletAddress);
+      const response = await adminAPI.approveUser(walletAddress);
+      showActionResult(`Approved ${name}.`, response.data?.blockchain_tx_hash);
       setPending((prev) => prev.filter((u) => u.wallet_address !== walletAddress));
     } catch (err) {
       alert(err.response?.data?.detail || `Failed to approve ${name}`);

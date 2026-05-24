@@ -33,7 +33,7 @@ def _inst_to_response(i: Institution) -> InstitutionResponse:
     )
 
 
-def _user_to_response(u: User) -> UserResponse:
+def _user_to_response(u: User, blockchain_tx_hash: Optional[str] = None) -> UserResponse:
     return UserResponse(
         id=u.id,
         wallet_address=u.wallet_address,
@@ -47,10 +47,11 @@ def _user_to_response(u: User) -> UserResponse:
         is_active=u.is_active,
         total_credits=u.total_credits or 0.0,
         created_at=u.created_at or datetime.utcnow(),
+        blockchain_tx_hash=blockchain_tx_hash,
     )
 
 
-def _dept_to_response(d: Department) -> DepartmentResponse:
+def _dept_to_response(d: Department, blockchain_tx_hash: Optional[str] = None) -> DepartmentResponse:
     return DepartmentResponse(
         id=d.id,
         institution_id=d.institution_id,
@@ -59,6 +60,7 @@ def _dept_to_response(d: Department) -> DepartmentResponse:
         hod_id=d.hod_id,
         is_active=d.is_active,
         created_at=d.created_at or datetime.utcnow(),
+        blockchain_tx_hash=blockchain_tx_hash,
     )
 
 
@@ -159,19 +161,21 @@ async def create_user(
     await db.commit()
     await db.refresh(user)
 
+    blockchain_tx_hash = None
     try:
         if blockchain_service.is_connected:
-            await blockchain_service.register_faculty(
+            tx_result = await blockchain_service.register_faculty(
                 faculty_address=address,
                 name=user_data.name,
                 department=user_data.department_code or "DEFAULT",
                 employee_id=user_data.employee_id or "",
                 institution=str(user_data.institution_id or ""),
             )
+            blockchain_tx_hash = tx_result.get("tx_hash")
     except Exception as e:
         print(f"Blockchain registration failed: {e}")
 
-    return _user_to_response(user)
+    return _user_to_response(user, blockchain_tx_hash=blockchain_tx_hash)
 
 
 @router.get("/users", response_model=List[UserResponse])
@@ -337,17 +341,19 @@ async def create_department(
             hod.department_id = department.id
         await db.commit()
 
+    blockchain_tx_hash = None
     try:
         if blockchain_service.is_connected and dept.hod_wallet_address:
-            await blockchain_service.create_department(
+            tx_result = await blockchain_service.create_department(
                 code=dept.code,
                 name=dept.name,
                 hod_address=dept.hod_wallet_address,
             )
+            blockchain_tx_hash = tx_result.get("tx_hash")
     except Exception as e:
         print(f"Blockchain department creation failed: {e}")
 
-    return _dept_to_response(department)
+    return _dept_to_response(department, blockchain_tx_hash=blockchain_tx_hash)
 
 
 @router.get("/departments", response_model=List[DepartmentResponse])

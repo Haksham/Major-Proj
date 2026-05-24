@@ -21,11 +21,12 @@ class _DeptCreate(BaseModel):
 from app.core.security import get_current_user, require_institute_admin
 from app.core.database import get_db
 from app.models.database import User, Department, Institution, Contribution, UserRole as DBUserRole, Designation as DBDesignation
+from app.services.blockchain_service import blockchain_service
 
 router = APIRouter(prefix="/institute-admin", tags=["Institute Administration"])
 
 
-def _user_to_response(u: User) -> UserResponse:
+def _user_to_response(u: User, blockchain_tx_hash: _Opt[str] = None) -> UserResponse:
     return UserResponse(
         id=u.id,
         wallet_address=u.wallet_address,
@@ -39,10 +40,11 @@ def _user_to_response(u: User) -> UserResponse:
         is_active=u.is_active,
         total_credits=u.total_credits or 0.0,
         created_at=u.created_at or datetime.utcnow(),
+        blockchain_tx_hash=blockchain_tx_hash,
     )
 
 
-def _dept_to_response(d: Department) -> DepartmentResponse:
+def _dept_to_response(d: Department, blockchain_tx_hash: _Opt[str] = None) -> DepartmentResponse:
     return DepartmentResponse(
         id=d.id,
         institution_id=d.institution_id,
@@ -51,6 +53,7 @@ def _dept_to_response(d: Department) -> DepartmentResponse:
         hod_id=d.hod_id,
         is_active=d.is_active,
         created_at=d.created_at or datetime.utcnow(),
+        blockchain_tx_hash=blockchain_tx_hash,
     )
 
 
@@ -246,7 +249,19 @@ async def create_department(
             hod.department_id = department.id
         await db.commit()
 
-    return _dept_to_response(department)
+    blockchain_tx_hash = None
+    try:
+        if blockchain_service.is_connected and dept.hod_wallet_address:
+            tx_result = await blockchain_service.create_department(
+                code=dept.code,
+                name=dept.name,
+                hod_address=dept.hod_wallet_address,
+            )
+            blockchain_tx_hash = tx_result.get("tx_hash")
+    except Exception as e:
+        print(f"Blockchain department creation failed: {e}")
+
+    return _dept_to_response(department, blockchain_tx_hash=blockchain_tx_hash)
 
 
 # ─── Stats ─────────────────────────────────────────────────────────────────────

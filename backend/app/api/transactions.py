@@ -6,13 +6,14 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.core.security import get_current_user
-from app.core.database import get_db
+from app.core.security import get_current_user, require_hod
+from app.core.database import get_db, AsyncSessionLocal
 from app.models.database import (
     Contribution as ContributionORM,
     ContributionStatus as DBStatus,
     User as UserORM,
 )
+from app.services.blockchain_service import blockchain_service
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
@@ -76,7 +77,7 @@ def _events_for_contribution(c: ContributionORM, reviewer_wallet: str | None = N
             "current_status": c.status.value if c.status else None,
             "actor_address": reviewer_wallet,
             "actor_role": "hod",
-            "tx_hash": None,
+            "tx_hash": c.review_tx_hash,
             "timestamp": c.review_time.isoformat() if c.review_time else None,
             "details": {
                 "review_notes": c.review_notes,
@@ -87,6 +88,66 @@ def _events_for_contribution(c: ContributionORM, reviewer_wallet: str | None = N
         })
 
     return events
+
+
+async def _ensure_review_tx_hash(c: ContributionORM, db: AsyncSession) -> None:
+    """
+    If a reviewed contribution is missing its review_tx_hash, query the blockchain
+    to recover it and persist it so future lookups are instant.
+    """
+    if c.review_tx_hash or not c.blockchain_id:
+        return
+    if c.status not in (DBStatus.VALIDATED, DBStatus.REJECTED, DBStatus.FLAGGED):
+        return
+    if not blockchain_service.is_connected:
+        return
+
+    tx_hash = blockchain_service.get_review_tx_hash(c.blockchain_id, c.status.value)
+    if tx_hash:
+        c.review_tx_hash = tx_hash
+        await db.commit()
+
+
+@router.post("/backfill", status_code=200)
+async def backfill_review_tx_hashes(
+    user: dict = Depends(require_hod),
+):
+    """
+    Query the blockchain to recover and store review_tx_hash for all existing
+    contributions that were reviewed before the column existed.
+    Returns counts of updated and failed records.
+    """
+    if not blockchain_service.is_connected:
+        raise HTTPException(status_code=503, detail="Blockchain not connected")
+
+    updated = 0
+    failed = 0
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(ContributionORM).where(
+                ContributionORM.review_tx_hash.is_(None),
+                ContributionORM.blockchain_id.isnot(None),
+                ContributionORM.status.in_([DBStatus.VALIDATED, DBStatus.REJECTED, DBStatus.FLAGGED]),
+            )
+        )
+        contributions = result.scalars().all()
+
+        for c in contributions:
+            try:
+                tx_hash = blockchain_service.get_review_tx_hash(c.blockchain_id, c.status.value)
+                if tx_hash:
+                    c.review_tx_hash = tx_hash
+                    updated += 1
+                else:
+                    failed += 1
+            except Exception:
+                failed += 1
+
+        if updated:
+            await session.commit()
+
+    return {"updated": updated, "not_found": failed, "total": updated + failed}
 
 
 @router.get("/lookup")
@@ -110,7 +171,10 @@ async def lookup_transactions(
 
     if len(q) == 66:
         result = await db.execute(
-            select(ContributionORM).where(ContributionORM.blockchain_tx_hash == q)
+            select(ContributionORM).where(
+                (ContributionORM.blockchain_tx_hash == q) |
+                (ContributionORM.review_tx_hash == q)
+            )
         )
         contribution = result.scalar_one_or_none()
 
@@ -120,14 +184,19 @@ async def lookup_transactions(
                 detail="No contribution found with this transaction hash",
             )
 
+        await _ensure_review_tx_hash(contribution, db)
+
         reviewer_wallet = None
         if contribution.reviewer_id:
             rev = await db.get(UserORM, contribution.reviewer_id)
             if rev:
                 reviewer_wallet = rev.wallet_address
 
-        events = _events_for_contribution(contribution, reviewer_wallet)
-        events.sort(key=lambda x: x["timestamp"] or "", reverse=True)
+        all_events = _events_for_contribution(contribution, reviewer_wallet)
+        # Return only the single event whose tx_hash matches the query
+        events = [e for e in all_events if e.get("tx_hash") == q]
+        if not events:
+            events = all_events  # fallback: tx stored before this feature existed
 
         return {
             "query": q,
@@ -155,6 +224,7 @@ async def lookup_transactions(
 
         for c in submitted:
             submitted_ids.add(c.id)
+            await _ensure_review_tx_hash(c, db)
             reviewer_wallet = None
             if c.reviewer_id:
                 rev = await db.get(UserORM, c.reviewer_id)
@@ -171,6 +241,7 @@ async def lookup_transactions(
             reviewed = reviewed_result.scalars().all()
 
             for c in reviewed:
+                await _ensure_review_tx_hash(c, db)
                 if c.id not in submitted_ids and c.review_time:
                     if c.status == DBStatus.VALIDATED:
                         rtype, rlabel = "validation", "Contribution Validated"
@@ -190,7 +261,7 @@ async def lookup_transactions(
                         "current_status": c.status.value if c.status else None,
                         "actor_address": q,
                         "actor_role": "hod",
-                        "tx_hash": None,
+                        "tx_hash": c.review_tx_hash,
                         "timestamp": c.review_time.isoformat() if c.review_time else None,
                         "details": {
                             "review_notes": c.review_notes,

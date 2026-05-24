@@ -44,6 +44,10 @@ async def _init_db():
             ALTER TABLE users
             ADD COLUMN IF NOT EXISTS designation userdesignation;
         """))
+        await conn.execute(text("""
+            ALTER TABLE contributions
+            ADD COLUMN IF NOT EXISTS review_tx_hash VARCHAR(100);
+        """))
 
     # Create tables (no-op if they already exist)
     async with engine.begin() as conn:

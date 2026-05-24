@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { logBlockchainConsoleEvent } from "../utils/blockchainConsole";
 
 /**
  * Authentication Store using Zustand
@@ -259,6 +260,8 @@ export const useContributionStore = create((set, get) => ({
         isLoading: false,
       });
 
+      logBlockchainConsoleEvent("contribution_submitted", data.blockchain_tx_hash);
+
       return data;
     } catch (error) {
       set({ error: error.message, isLoading: false });
@@ -300,6 +303,11 @@ export const useContributionStore = create((set, get) => ({
         pendingReviews: pendingReviews.filter((r) => r.id !== contributionId),
         isLoading: false,
       });
+
+      logBlockchainConsoleEvent(
+        `contribution_${reviewData.action || "review"}`,
+        data.review_tx_hash || data.blockchain_tx_hash,
+      );
 
       return data;
     } catch (error) {
