@@ -28,7 +28,7 @@ class IPFSService:
         """Get or create IPFS client connection."""
         if not IPFS_AVAILABLE:
             raise ImportError("ipfshttpclient is not installed")
-        
+
         if self._client is None:
             try:
                 self._client = ipfshttpclient.connect(
@@ -37,7 +37,7 @@ class IPFSService:
                 self._connected = True
             except Exception as e:
                 self._connected = False
-                raise ConnectionError(f"Failed to connect to IPFS: {e}")
+                raise ConnectionError(f"Failed to connect to IPFS at {settings.IPFS_HOST}:{settings.IPFS_PORT}: {e}")
         
         return self._client
     

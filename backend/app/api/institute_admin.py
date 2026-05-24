@@ -1,0 +1,287 @@
+"""
+SALF API Routes - Institute Administration
+Scoped to a single institution; accessible by institute_admin and master admin.
+"""
+from typing import List
+from datetime import datetime
+from fastapi import APIRouter, HTTPException, status, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
+
+from app.schemas.schemas import UserResponse, UserRole, DepartmentCreate, DepartmentResponse, UserUpdate
+from app.core.security import get_current_user, require_institute_admin
+from app.core.database import get_db
+from app.models.database import User, Department, Institution, UserRole as DBUserRole
+
+router = APIRouter(prefix="/institute-admin", tags=["Institute Administration"])
+
+
+def _user_to_response(u: User) -> UserResponse:
+    return UserResponse(
+        id=u.id,
+        wallet_address=u.wallet_address,
+        name=u.name,
+        email=u.email,
+        employee_id=u.employee_id,
+        role=UserRole(u.role.value),
+        institution_id=u.institution_id,
+        department_id=u.department_id,
+        is_active=u.is_active,
+        total_credits=u.total_credits or 0.0,
+        created_at=u.created_at or datetime.utcnow(),
+    )
+
+
+def _dept_to_response(d: Department) -> DepartmentResponse:
+    return DepartmentResponse(
+        id=d.id,
+        institution_id=d.institution_id,
+        code=d.code,
+        name=d.name,
+        hod_id=d.hod_id,
+        is_active=d.is_active,
+        created_at=d.created_at or datetime.utcnow(),
+    )
+
+
+def _get_institution_id(current_user: dict) -> int:
+    """Extract institution_id from token — institute admins are always scoped."""
+    inst_id = current_user.get("institution_id")
+    if not inst_id and current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Institute admin account has no institution assigned.",
+        )
+    return inst_id
+
+
+# ─── Pending Faculty ───────────────────────────────────────────────────────────
+
+@router.get("/pending", response_model=List[UserResponse])
+async def list_pending_faculty(
+    current_user: dict = Depends(require_institute_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Faculty/HoD pending approval for this institution."""
+    institution_id = _get_institution_id(current_user)
+    result = await db.execute(
+        select(User).where(
+            User.institution_id == institution_id,
+            User.is_active == False,
+            User.role.in_([DBUserRole.FACULTY, DBUserRole.HOD]),
+        ).order_by(User.created_at.desc())
+    )
+    return [_user_to_response(u) for u in result.scalars().all()]
+
+
+@router.post("/users/{wallet_address}/approve", response_model=UserResponse)
+async def approve_faculty(
+    wallet_address: str,
+    current_user: dict = Depends(require_institute_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Approve a pending faculty/HoD registration."""
+    institution_id = _get_institution_id(current_user)
+
+    user = (await db.execute(
+        select(User).where(User.wallet_address == wallet_address.lower())
+    )).scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    if user.institution_id != institution_id and current_user.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User belongs to a different institution.")
+    if user.is_active:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User is already active.")
+
+    user.is_active = True
+    await db.commit()
+    await db.refresh(user)
+    return _user_to_response(user)
+
+
+@router.post("/users/{wallet_address}/reject")
+async def reject_faculty(
+    wallet_address: str,
+    current_user: dict = Depends(require_institute_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reject (delete) a pending faculty/HoD registration."""
+    institution_id = _get_institution_id(current_user)
+
+    user = (await db.execute(
+        select(User).where(User.wallet_address == wallet_address.lower())
+    )).scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    if user.institution_id != institution_id and current_user.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User belongs to a different institution.")
+    if user.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot reject an already active user.")
+
+    await db.delete(user)
+    await db.commit()
+    return {"message": f"Registration for {wallet_address} rejected and removed."}
+
+
+# ─── Faculty Management ────────────────────────────────────────────────────────
+
+@router.get("/users", response_model=List[UserResponse])
+async def list_institution_users(
+    current_user: dict = Depends(require_institute_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all active users in this institution."""
+    institution_id = _get_institution_id(current_user)
+    result = await db.execute(
+        select(User).where(
+            User.institution_id == institution_id,
+            User.is_active == True,
+        ).order_by(User.name)
+    )
+    return [_user_to_response(u) for u in result.scalars().all()]
+
+
+@router.post("/users/{wallet_address}/assign-hod")
+async def assign_hod(
+    wallet_address: str,
+    current_user: dict = Depends(require_institute_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Promote an active faculty member to HoD for their department."""
+    institution_id = _get_institution_id(current_user)
+
+    user = (await db.execute(
+        select(User).where(User.wallet_address == wallet_address.lower())
+    )).scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    if user.institution_id != institution_id and current_user.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User belongs to a different institution.")
+    if not user.department_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has no department assigned.")
+
+    user.role = DBUserRole.HOD
+    dept = await db.get(Department, user.department_id)
+    if dept:
+        dept.hod_id = user.id
+
+    await db.commit()
+    return {"message": f"{user.name} promoted to HoD.", "user_id": user.id}
+
+
+# ─── Department Management ─────────────────────────────────────────────────────
+
+@router.get("/departments", response_model=List[DepartmentResponse])
+async def list_departments(
+    current_user: dict = Depends(require_institute_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all departments for this institution."""
+    institution_id = _get_institution_id(current_user)
+    result = await db.execute(
+        select(Department).where(Department.institution_id == institution_id).order_by(Department.name)
+    )
+    return [_dept_to_response(d) for d in result.scalars().all()]
+
+
+@router.post("/departments", response_model=DepartmentResponse, status_code=status.HTTP_201_CREATED)
+async def create_department(
+    dept: DepartmentCreate,
+    current_user: dict = Depends(require_institute_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a department under this institution."""
+    institution_id = _get_institution_id(current_user)
+
+    # Institute admins can only create in their own institution
+    if dept.institution_id != institution_id and current_user.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot create department in another institution.")
+
+    existing = (await db.execute(
+        select(Department).where(
+            Department.institution_id == institution_id,
+            Department.code == dept.code.upper(),
+        )
+    )).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Department code already exists in this institution.")
+
+    hod_id = None
+    if dept.hod_wallet_address:
+        hod = (await db.execute(
+            select(User).where(User.wallet_address == dept.hod_wallet_address.lower())
+        )).scalar_one_or_none()
+        if hod:
+            hod_id = hod.id
+            hod.role = DBUserRole.HOD
+
+    department = Department(
+        institution_id=institution_id,
+        code=dept.code.upper(),
+        name=dept.name,
+        hod_id=hod_id,
+        is_active=True,
+    )
+    db.add(department)
+    await db.commit()
+    await db.refresh(department)
+
+    if hod_id:
+        hod = await db.get(User, hod_id)
+        if hod:
+            hod.department_id = department.id
+        await db.commit()
+
+    return _dept_to_response(department)
+
+
+# ─── Stats ─────────────────────────────────────────────────────────────────────
+
+@router.get("/stats")
+async def get_institution_stats(
+    current_user: dict = Depends(require_institute_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Overview stats for this institution."""
+    institution_id = _get_institution_id(current_user)
+
+    total_faculty = (await db.execute(
+        select(func.count(User.id)).where(
+            User.institution_id == institution_id,
+            User.role == DBUserRole.FACULTY,
+            User.is_active == True,
+        )
+    )).scalar()
+
+    total_hod = (await db.execute(
+        select(func.count(User.id)).where(
+            User.institution_id == institution_id,
+            User.role == DBUserRole.HOD,
+            User.is_active == True,
+        )
+    )).scalar()
+
+    pending_count = (await db.execute(
+        select(func.count(User.id)).where(
+            User.institution_id == institution_id,
+            User.is_active == False,
+            User.role.in_([DBUserRole.FACULTY, DBUserRole.HOD]),
+        )
+    )).scalar()
+
+    dept_count = (await db.execute(
+        select(func.count(Department.id)).where(Department.institution_id == institution_id)
+    )).scalar()
+
+    inst = await db.get(Institution, institution_id)
+
+    return {
+        "institution": inst.name if inst else None,
+        "total_faculty": total_faculty,
+        "total_hod": total_hod,
+        "pending_approvals": pending_count,
+        "total_departments": dept_count,
+    }

@@ -84,6 +84,7 @@ async def get_current_user(
         "address": payload.get("sub"),
         "role": payload.get("role"),
         "faculty_id": payload.get("faculty_id"),
+        "institution_id": payload.get("institution_id"),
     }
 
 
@@ -125,6 +126,7 @@ class RoleChecker:
 
 
 # Role checker instances
-require_faculty = RoleChecker(["faculty", "hod", "admin"])
-require_hod = RoleChecker(["hod", "admin"])
+require_faculty = RoleChecker(["faculty", "hod", "institute_admin", "admin"])
+require_hod = RoleChecker(["hod", "institute_admin", "admin"])
+require_institute_admin = RoleChecker(["institute_admin", "admin"])
 require_admin = RoleChecker(["admin"])

@@ -13,6 +13,7 @@ import SubmitContribution from "./pages/SubmitContribution";
 import Portfolio from "./pages/Portfolio";
 import Reviews from "./pages/Reviews";
 import AdminPanel from "./pages/AdminPanel";
+import InstituteAdminPanel from "./pages/InstituteAdminPanel";
 import NotFound from "./pages/NotFound";
 
 // Protected Route Component
@@ -90,12 +91,22 @@ function App() {
           }
         />
 
-        {/* Admin Routes */}
+        {/* Master Admin Routes */}
         <Route
           path="admin/*"
           element={
             <ProtectedRoute allowedRoles={["admin"]}>
               <AdminPanel />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Institute Admin Routes */}
+        <Route
+          path="institute-admin/*"
+          element={
+            <ProtectedRoute allowedRoles={["institute_admin"]}>
+              <InstituteAdminPanel />
             </ProtectedRoute>
           }
         />

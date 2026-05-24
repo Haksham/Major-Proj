@@ -15,6 +15,8 @@ export const useAuthStore = create(
       isConnected: false,
       isLoading: false,
       error: null,
+      needsRegistration: false,
+      pendingApproval: false,
 
       // Actions
       setUser: (user) => set({ user }),
@@ -23,6 +25,8 @@ export const useAuthStore = create(
         set({ walletAddress, isConnected: !!walletAddress }),
       setLoading: (isLoading) => set({ isLoading }),
       setError: (error) => set({ error }),
+      setNeedsRegistration: (val) => set({ needsRegistration: val }),
+      setPendingApproval: (val) => set({ pendingApproval: val }),
 
       // Connect wallet
       connectWallet: async () => {
@@ -83,13 +87,30 @@ export const useAuthStore = create(
 
           if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.detail || "Login failed");
+            const detail = errorData.detail || "Login failed";
+            // 403 "not registered" → prompt registration
+            if (
+              response.status === 403 &&
+              typeof detail === "string" &&
+              detail.toLowerCase().includes("not registered")
+            ) {
+              set({ needsRegistration: true, isLoading: false, error: null });
+              return null;
+            }
+            // 403 "pending_approval" → show waiting screen
+            if (response.status === 403 && detail === "pending_approval") {
+              set({ pendingApproval: true, isLoading: false, error: null });
+              return null;
+            }
+            throw new Error(detail);
           }
 
           const data = await response.json();
           set({
             user: data.user,
             token: data.access_token,
+            needsRegistration: false,
+            pendingApproval: false,
             isLoading: false,
           });
 
@@ -133,6 +154,8 @@ export const useAuthStore = create(
           walletAddress: null,
           isConnected: false,
           error: null,
+          needsRegistration: false,
+          pendingApproval: false,
         });
       },
     }),

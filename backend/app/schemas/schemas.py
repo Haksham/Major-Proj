@@ -4,14 +4,16 @@ Request and Response models for API validation
 """
 from datetime import datetime
 from typing import Optional, List, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
 from enum import Enum
 
 
-# Enums
+# ─── Enums ────────────────────────────────────────────────────────────────────
+
 class UserRole(str, Enum):
     FACULTY = "faculty"
     HOD = "hod"
+    INSTITUTE_ADMIN = "institute_admin"
     ADMIN = "admin"
 
 
@@ -36,27 +38,87 @@ class ContributionStatus(str, Enum):
     FLAGGED = "flagged"
 
 
-# Authentication Schemas
+# ─── Institution Schemas ───────────────────────────────────────────────────────
+
+class InstitutionCreate(BaseModel):
+    code: str = Field(..., min_length=2, max_length=20)
+    name: str = Field(..., min_length=2, max_length=255)
+    admin_address: Optional[str] = Field(None, pattern=r"^0x[a-fA-F0-9]{40}$")
+
+
+class InstitutionResponse(BaseModel):
+    id: int
+    code: str
+    name: str
+    admin_address: Optional[str]
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ─── Department Schemas ────────────────────────────────────────────────────────
+
+class DepartmentCreate(BaseModel):
+    institution_id: int
+    code: str = Field(..., min_length=2, max_length=20)
+    name: str = Field(..., min_length=2, max_length=255)
+    hod_wallet_address: Optional[str] = Field(None, pattern=r"^0x[a-fA-F0-9]{40}$")
+
+
+class DepartmentResponse(BaseModel):
+    id: int
+    institution_id: int
+    code: str
+    name: str
+    hod_id: Optional[int]
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ─── Authentication Schemas ────────────────────────────────────────────────────
+
 class NonceRequest(BaseModel):
-    """Request for authentication nonce."""
     wallet_address: str = Field(..., pattern=r"^0x[a-fA-F0-9]{40}$")
 
 
 class NonceResponse(BaseModel):
-    """Response with authentication nonce."""
     nonce: str
     message: str
 
 
+class RegisterRequest(BaseModel):
+    """Self-service faculty/HoD registration — requires a valid institution + department."""
+    wallet_address: str = Field(..., pattern=r"^0x[a-fA-F0-9]{40}$")
+    name: str = Field(..., min_length=2, max_length=255)
+    role: UserRole = Field(..., description="faculty or hod only")
+    institution_id: int
+    department_code: str = Field(..., min_length=1, max_length=20)
+    employee_id: Optional[str] = None
+    email: Optional[str] = None
+
+
+class InstituteRegisterRequest(BaseModel):
+    """Self-service institute admin registration — creates institution + admin account."""
+    wallet_address: str = Field(..., pattern=r"^0x[a-fA-F0-9]{40}$")
+    name: str = Field(..., min_length=2, max_length=255)
+    email: Optional[str] = None
+    institution_code: str = Field(..., min_length=2, max_length=20)
+    institution_name: str = Field(..., min_length=2, max_length=255)
+    institution_admin_address: Optional[str] = Field(None, pattern=r"^0x[a-fA-F0-9]{40}$")
+
+
 class AuthRequest(BaseModel):
-    """Authentication request with signature."""
     wallet_address: str = Field(..., pattern=r"^0x[a-fA-F0-9]{40}$")
     signature: str
     nonce: str
 
 
 class AuthResponse(BaseModel):
-    """Authentication response with tokens."""
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
@@ -64,40 +126,38 @@ class AuthResponse(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    """Token refresh request."""
     refresh_token: str
 
 
-# User Schemas
+# ─── User Schemas ──────────────────────────────────────────────────────────────
+
 class UserBase(BaseModel):
-    """Base user schema."""
     name: str = Field(..., min_length=2, max_length=255)
     email: Optional[str] = None
     employee_id: Optional[str] = None
-    institution: Optional[str] = None
 
 
 class UserCreate(UserBase):
-    """Schema for creating a new user."""
+    """Admin-only user creation (bypasses institution check)."""
     wallet_address: str = Field(..., pattern=r"^0x[a-fA-F0-9]{40}$")
     role: UserRole = UserRole.FACULTY
+    institution_id: Optional[int] = None
     department_code: Optional[str] = None
 
 
 class UserUpdate(BaseModel):
-    """Schema for updating a user."""
     name: Optional[str] = None
     email: Optional[str] = None
     employee_id: Optional[str] = None
-    institution: Optional[str] = None
     is_active: Optional[bool] = None
+    institution_id: Optional[int] = None
 
 
 class UserResponse(UserBase):
-    """User response schema."""
     id: int
     wallet_address: str
     role: UserRole
+    institution_id: Optional[int]
     department_id: Optional[int]
     is_active: bool
     total_credits: float
@@ -107,31 +167,9 @@ class UserResponse(UserBase):
         from_attributes = True
 
 
-# Department Schemas
-class DepartmentCreate(BaseModel):
-    """Schema for creating a department."""
-    code: str = Field(..., min_length=2, max_length=20)
-    name: str = Field(..., min_length=2, max_length=255)
-    hod_wallet_address: Optional[str] = None
+# ─── Contribution Schemas ──────────────────────────────────────────────────────
 
-
-class DepartmentResponse(BaseModel):
-    """Department response schema."""
-    id: int
-    code: str
-    name: str
-    hod_id: Optional[int]
-    is_active: bool
-    created_at: datetime
-    faculty_count: int = 0
-
-    class Config:
-        from_attributes = True
-
-
-# Contribution Schemas
 class ContributionMetadata(BaseModel):
-    """Metadata for academic contribution."""
     journal_name: Optional[str] = None
     isbn: Optional[str] = None
     issn: Optional[str] = None
@@ -141,7 +179,6 @@ class ContributionMetadata(BaseModel):
 
 
 class ContributionCreate(BaseModel):
-    """Schema for submitting a contribution."""
     category: ContributionCategory
     title: str = Field(..., min_length=5, max_length=500)
     abstract: str = Field(..., min_length=100)
@@ -149,7 +186,6 @@ class ContributionCreate(BaseModel):
 
 
 class ContributionResponse(BaseModel):
-    """Contribution response schema."""
     id: int
     blockchain_id: Optional[int]
     faculty_id: int
@@ -174,20 +210,18 @@ class ContributionResponse(BaseModel):
 
 
 class ContributionReview(BaseModel):
-    """Schema for reviewing a contribution."""
     action: str = Field(..., pattern=r"^(validate|reject|flag)$")
     notes: str = Field(..., min_length=10, max_length=1000)
 
 
-# AI Evaluation Schemas
+# ─── AI Evaluation Schemas ─────────────────────────────────────────────────────
+
 class EvaluationRequest(BaseModel):
-    """Request for AI evaluation."""
     contribution_id: int
     abstract: str
 
 
 class EvaluationResponse(BaseModel):
-    """AI evaluation response."""
     contribution_id: int
     quality_score: float = Field(..., ge=0, le=100)
     novelty_percentage: float = Field(..., ge=0, le=100)
@@ -197,9 +231,9 @@ class EvaluationResponse(BaseModel):
     flag_reasons: Optional[List[str]] = None
 
 
-# Portfolio Schemas
+# ─── Portfolio Schemas ─────────────────────────────────────────────────────────
+
 class PortfolioSummary(BaseModel):
-    """Academic credit portfolio summary."""
     total_credits: float
     total_contributions: int
     validated_count: int
@@ -211,14 +245,13 @@ class PortfolioSummary(BaseModel):
 
 
 class PortfolioDetail(PortfolioSummary):
-    """Detailed portfolio with contributions list."""
     contributions: List[ContributionResponse]
     recent_activity: List[dict]
 
 
-# Dashboard Schemas
+# ─── Dashboard Schemas ─────────────────────────────────────────────────────────
+
 class DashboardStats(BaseModel):
-    """Dashboard statistics for admins/HoD."""
     total_faculty: int
     total_contributions: int
     pending_reviews: int
@@ -228,9 +261,9 @@ class DashboardStats(BaseModel):
     category_distribution: dict
 
 
-# Blockchain Schemas
+# ─── Blockchain / Contract Schemas ────────────────────────────────────────────
+
 class BlockchainTransaction(BaseModel):
-    """Blockchain transaction response."""
     tx_hash: str
     block_number: int
     gas_used: int
@@ -239,45 +272,30 @@ class BlockchainTransaction(BaseModel):
 
 
 class ContractInfo(BaseModel):
-    """Smart contract information."""
     name: str
     address: str
     abi_version: str
     deployed_at: Optional[datetime]
 
 
-# IPFS Schemas
+# ─── IPFS Schemas ─────────────────────────────────────────────────────────────
+
 class IPFSUploadResponse(BaseModel):
-    """IPFS upload response."""
     cid: str
     size: int
     filename: str
     gateway_url: str
 
 
-# Error Schemas
+# ─── Error / Pagination Schemas ────────────────────────────────────────────────
+
 class ErrorResponse(BaseModel):
-    """Standard error response."""
     error: str
     detail: Optional[str] = None
     code: Optional[str] = None
 
 
-class ValidationErrorDetail(BaseModel):
-    """Validation error detail."""
-    loc: List[Any]
-    msg: str
-    type: str
-
-
-class ValidationErrorResponse(BaseModel):
-    """Validation error response."""
-    detail: List[ValidationErrorDetail]
-
-
-# Pagination
 class PaginatedResponse(BaseModel):
-    """Paginated response wrapper."""
     items: List[Any]
     total: int
     page: int
@@ -285,5 +303,5 @@ class PaginatedResponse(BaseModel):
     total_pages: int
 
 
-# Update forward references
+# Resolve forward references
 AuthResponse.model_rebuild()

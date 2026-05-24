@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, Link, useLocation } from "react-router-dom";
-import { adminAPI } from "../services/api";
+import { adminAPI, institutesAPI } from "../services/api";
 import {
   UsersIcon,
   BuildingOfficeIcon,
+  BuildingLibraryIcon,
   ChartBarIcon,
   CubeIcon,
   PlusIcon,
@@ -17,28 +18,22 @@ function AdminPanel() {
 
   const adminNavigation = [
     { name: "Overview", href: "/admin", icon: ChartBarIcon },
+    { name: "Pending", href: "/admin/pending", icon: ShieldCheckIcon },
+    { name: "Institutions", href: "/admin/institutions", icon: BuildingLibraryIcon },
+    { name: "Departments", href: "/admin/departments", icon: BuildingOfficeIcon },
     { name: "Faculty", href: "/admin/faculty", icon: UsersIcon },
-    {
-      name: "Departments",
-      href: "/admin/departments",
-      icon: BuildingOfficeIcon,
-    },
     { name: "Blockchain", href: "/admin/blockchain", icon: CubeIcon },
   ];
 
   return (
     <div className="space-y-6">
-      {/* Admin header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
-        <p className="mt-1 text-gray-500">
-          Manage faculty, departments, and system settings
-        </p>
+        <p className="mt-1 text-gray-500">Manage institutions, departments, faculty, and system settings</p>
       </div>
 
-      {/* Admin navigation */}
       <div className="border-b border-gray-200">
-        <nav className="flex space-x-8">
+        <nav className="flex space-x-8 overflow-x-auto">
           {adminNavigation.map((item) => {
             const isActive = location.pathname === item.href;
             return (
@@ -46,7 +41,7 @@ function AdminPanel() {
                 key={item.name}
                 to={item.href}
                 className={clsx(
-                  "flex items-center py-4 px-1 border-b-2 font-medium text-sm",
+                  "flex items-center py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap",
                   isActive
                     ? "border-primary-500 text-primary-600"
                     : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300",
@@ -60,399 +55,214 @@ function AdminPanel() {
         </nav>
       </div>
 
-      {/* Admin routes */}
       <Routes>
         <Route index element={<AdminOverview />} />
-        <Route path="faculty" element={<FacultyManagement />} />
+        <Route path="pending" element={<PendingApprovals />} />
+        <Route path="institutions" element={<InstitutionManagement />} />
         <Route path="departments" element={<DepartmentManagement />} />
+        <Route path="faculty" element={<FacultyManagement />} />
         <Route path="blockchain" element={<BlockchainStats />} />
       </Routes>
     </div>
   );
 }
 
-// Admin Overview Component
+// ─── Overview ──────────────────────────────────────────────────────────────────
+
 function AdminOverview() {
-  const [stats, setStats] = useState({
-    totalFaculty: 0,
-    totalDepartments: 0,
-    totalContributions: 0,
-    pendingReviews: 0,
-    validatedRecords: 0,
-    totalCredits: 0,
-  });
+  const [stats, setStats] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await adminAPI.getSystemStats();
-        setStats(response.data);
-      } catch (error) {
-        console.error("Failed to fetch stats:", error);
-        // Set mock data for demo
+        const [usersResp, deptsResp] = await Promise.all([
+          adminAPI.getUsers(),
+          adminAPI.getDepartments(),
+        ]);
+        const users = usersResp.data || [];
         setStats({
-          totalFaculty: 45,
-          totalDepartments: 8,
-          totalContributions: 324,
-          pendingReviews: 12,
-          validatedRecords: 287,
-          totalCredits: 4560,
+          totalFaculty: users.filter((u) => u.role === "faculty").length,
+          totalHoD: users.filter((u) => u.role === "hod").length,
+          totalDepartments: (deptsResp.data || []).length,
+          totalUsers: users.length,
         });
+      } catch {
+        setStats({ totalFaculty: 0, totalHoD: 0, totalDepartments: 0, totalUsers: 0 });
       } finally {
         setIsLoading(false);
       }
     };
-
     fetchStats();
   }, []);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="loader" />
-      </div>
-    );
-  }
+  if (isLoading) return <div className="flex items-center justify-center h-64"><div className="loader" /></div>;
 
   return (
     <div className="space-y-6">
-      {/* Stats grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <StatCard
-          title="Total Faculty"
-          value={stats.totalFaculty}
-          icon={UsersIcon}
-          color="blue"
-        />
-        <StatCard
-          title="Departments"
-          value={stats.totalDepartments}
-          icon={BuildingOfficeIcon}
-          color="purple"
-        />
-        <StatCard
-          title="Total Contributions"
-          value={stats.totalContributions}
-          icon={ChartBarIcon}
-          color="green"
-        />
-        <StatCard
-          title="Pending Reviews"
-          value={stats.pendingReviews}
-          icon={ShieldCheckIcon}
-          color="yellow"
-        />
-        <StatCard
-          title="Validated Records"
-          value={stats.validatedRecords}
-          icon={CubeIcon}
-          color="emerald"
-        />
-        <StatCard
-          title="Total Credits Issued"
-          value={stats.totalCredits}
-          icon={ChartBarIcon}
-          color="indigo"
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard title="Total Faculty" value={stats.totalFaculty} icon={UsersIcon} color="blue" />
+        <StatCard title="Heads of Department" value={stats.totalHoD} icon={UsersIcon} color="purple" />
+        <StatCard title="Departments" value={stats.totalDepartments} icon={BuildingOfficeIcon} color="green" />
+        <StatCard title="Total Users" value={stats.totalUsers} icon={ShieldCheckIcon} color="indigo" />
       </div>
 
-      {/* Quick actions */}
       <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Quick Actions
-        </h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Link
-            to="/admin/faculty"
-            className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            <UsersIcon className="h-8 w-8 text-primary-600" />
-            <p className="mt-2 font-medium text-gray-900">Register Faculty</p>
-            <p className="text-sm text-gray-500">Add new faculty members</p>
+          <Link to="/admin/institutions" className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+            <BuildingLibraryIcon className="h-8 w-8 text-indigo-600" />
+            <p className="mt-2 font-medium text-gray-900">Manage Institutions</p>
+            <p className="text-sm text-gray-500">Create institutions first</p>
           </Link>
-          <Link
-            to="/admin/departments"
-            className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-          >
+          <Link to="/admin/departments" className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
             <BuildingOfficeIcon className="h-8 w-8 text-purple-600" />
             <p className="mt-2 font-medium text-gray-900">Manage Departments</p>
-            <p className="text-sm text-gray-500">
-              Create or update departments
-            </p>
+            <p className="text-sm text-gray-500">Add departments under institutions</p>
           </Link>
-          <Link
-            to="/reviews"
-            className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            <ShieldCheckIcon className="h-8 w-8 text-green-600" />
-            <p className="mt-2 font-medium text-gray-900">Review Queue</p>
-            <p className="text-sm text-gray-500">Process pending reviews</p>
+          <Link to="/admin/pending" className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+            <ShieldCheckIcon className="h-8 w-8 text-yellow-500" />
+            <p className="mt-2 font-medium text-gray-900">Pending Approvals</p>
+            <p className="text-sm text-gray-500">Approve new registrations</p>
           </Link>
-        </div>
-      </div>
-
-      {/* System status */}
-      <div className="card bg-gradient-to-r from-gray-800 to-gray-900 text-white">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <CubeIcon className="h-10 w-10 text-blue-400" />
-            <div>
-              <h3 className="text-lg font-semibold">System Status</h3>
-              <p className="text-gray-400">All services operational</p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-4">
-            <StatusIndicator label="Blockchain" status="online" />
-            <StatusIndicator label="IPFS" status="online" />
-            <StatusIndicator label="AI Engine" status="online" />
-          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// Faculty Management Component
-function FacultyManagement() {
-  const [faculty, setFaculty] = useState([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showAddModal, setShowAddModal] = useState(false);
+// ─── Institution Management ─────────────────────────────────────────────────────
+
+function InstitutionManagement() {
+  const [institutions, setInstitutions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
 
-  useEffect(() => {
-    const fetchFaculty = async () => {
-      try {
-        const response = await adminAPI.getAllFaculty();
-        setFaculty(response.data.faculty || []);
-      } catch (error) {
-        console.error("Failed to fetch faculty:", error);
-        // Mock data
-        setFaculty([
-          {
-            id: 1,
-            name: "Dr. John Smith",
-            department: "Computer Science",
-            wallet_address: "0x1234...5678",
-            is_active: true,
-            total_credits: 125,
-          },
-          {
-            id: 2,
-            name: "Dr. Sarah Johnson",
-            department: "Physics",
-            wallet_address: "0x2345...6789",
-            is_active: true,
-            total_credits: 98,
-          },
-          {
-            id: 3,
-            name: "Dr. Michael Brown",
-            department: "Mathematics",
-            wallet_address: "0x3456...7890",
-            is_active: true,
-            total_credits: 156,
-          },
-        ]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const load = async () => {
+    setIsLoading(true);
+    try {
+      const r = await adminAPI.listInstitutions();
+      setInstitutions(r.data || []);
+    } catch {
+      setInstitutions([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    fetchFaculty();
-  }, []);
+  useEffect(() => { load(); }, []);
 
-  const filteredFaculty = faculty.filter(
-    (f) =>
-      f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      f.department.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  const handleDeactivate = async (id, name) => {
+    if (!confirm(`Deactivate "${name}"? New registrations under it will be blocked.`)) return;
+    try {
+      await adminAPI.deactivateInstitution(id);
+      await load();
+    } catch (err) {
+      alert(err.response?.data?.detail || "Failed to deactivate");
+    }
+  };
 
   return (
     <div className="space-y-4">
-      {/* Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search faculty..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="input pl-10"
-          />
-        </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="btn-primary inline-flex items-center"
-        >
+      <div className="flex justify-end">
+        <button onClick={() => setShowAdd(true)} className="btn-primary inline-flex items-center">
           <PlusIcon className="h-5 w-5 mr-2" />
-          Register Faculty
+          Create Institution
         </button>
       </div>
 
-      {/* Faculty table */}
-      <div className="card overflow-hidden">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="loader" />
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="table-header">Name</th>
-                  <th className="table-header">Department</th>
-                  <th className="table-header">Wallet Address</th>
-                  <th className="table-header">Total Credits</th>
-                  <th className="table-header">Status</th>
-                  <th className="table-header">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredFaculty.map((f) => (
-                  <tr key={f.id} className="hover:bg-gray-50">
-                    <td className="table-cell font-medium text-gray-900">
-                      {f.name}
-                    </td>
-                    <td className="table-cell text-gray-500">{f.department}</td>
-                    <td className="table-cell font-mono text-sm text-gray-500">
-                      {f.wallet_address}
-                    </td>
-                    <td className="table-cell font-medium text-green-600">
-                      {f.total_credits}
-                    </td>
-                    <td className="table-cell">
-                      <span
-                        className={clsx(
-                          "badge",
-                          f.is_active ? "badge-approved" : "badge-rejected",
-                        )}
-                      >
-                        {f.is_active ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td className="table-cell">
-                      <button className="text-primary-600 hover:text-primary-700 text-sm font-medium">
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Add Faculty Modal */}
-      {showAddModal && (
-        <AddFacultyModal onClose={() => setShowAddModal(false)} />
+      {isLoading ? (
+        <div className="flex items-center justify-center h-48"><div className="loader" /></div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {institutions.map((inst) => (
+            <div key={inst.id} className="card">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">{inst.name}</h3>
+                  <p className="text-sm text-gray-500">Code: {inst.code}</p>
+                  {inst.admin_address && (
+                    <p className="text-xs text-gray-400 font-mono mt-1 truncate">{inst.admin_address}</p>
+                  )}
+                </div>
+                <span className={clsx("badge", inst.is_active ? "badge-approved" : "badge-rejected")}>
+                  {inst.is_active ? "Active" : "Inactive"}
+                </span>
+              </div>
+              {inst.is_active && (
+                <div className="mt-4">
+                  <button
+                    onClick={() => handleDeactivate(inst.id, inst.name)}
+                    className="text-red-600 hover:text-red-700 text-sm font-medium"
+                  >
+                    Deactivate
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          {institutions.length === 0 && (
+            <div className="col-span-2 text-center py-12 text-gray-400">
+              No institutions yet. Create one to allow faculty registration.
+            </div>
+          )}
+        </div>
       )}
+
+      {showAdd && <AddInstitutionModal onClose={() => setShowAdd(false)} onSuccess={load} />}
     </div>
   );
 }
 
-// Add Faculty Modal
-function AddFacultyModal({ onClose }) {
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    department: "",
-    employee_id: "",
-    wallet_address: "",
-  });
+function AddInstitutionModal({ onClose, onSuccess }) {
+  const [form, setForm] = useState({ code: "", name: "", admin_address: "" });
+  const [error, setError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
     try {
-      await adminAPI.registerFaculty(formData);
+      await adminAPI.createInstitution({
+        code: form.code.toUpperCase(),
+        name: form.name,
+        admin_address: form.admin_address || undefined,
+      });
+      onSuccess();
       onClose();
-    } catch (error) {
-      console.error("Failed to register faculty:", error);
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      setError(Array.isArray(detail) ? detail[0]?.msg : detail || err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4">
-        <div
-          className="fixed inset-0 bg-gray-500 bg-opacity-75"
-          onClick={onClose}
-        />
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={onClose} />
         <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">
-            Register Faculty
-          </h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Create Institution</h2>
+          {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-600">{error}</div>}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label">Full Name</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                className="input"
-                required
-              />
+              <label className="label">Institution Code *</label>
+              <input required value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="input uppercase" placeholder="MIT" />
             </div>
             <div>
-              <label className="label">Email</label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
-                className="input"
-                required
-              />
+              <label className="label">Full Name *</label>
+              <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" placeholder="Massachusetts Institute of Technology" />
             </div>
             <div>
-              <label className="label">Department</label>
-              <input
-                type="text"
-                value={formData.department}
-                onChange={(e) =>
-                  setFormData({ ...formData, department: e.target.value })
-                }
-                className="input"
-                required
-              />
+              <label className="label">Admin Wallet Address</label>
+              <input value={form.admin_address} onChange={(e) => setForm({ ...form, admin_address: e.target.value })} className="input font-mono" placeholder="0x..." />
             </div>
-            <div>
-              <label className="label">Employee ID</label>
-              <input
-                type="text"
-                value={formData.employee_id}
-                onChange={(e) =>
-                  setFormData({ ...formData, employee_id: e.target.value })
-                }
-                className="input"
-                required
-              />
-            </div>
-            <div>
-              <label className="label">Wallet Address</label>
-              <input
-                type="text"
-                value={formData.wallet_address}
-                onChange={(e) =>
-                  setFormData({ ...formData, wallet_address: e.target.value })
-                }
-                placeholder="0x..."
-                className="input font-mono"
-                required
-              />
-            </div>
-            <div className="flex justify-end space-x-3 pt-4">
-              <button type="button" onClick={onClose} className="btn-secondary">
-                Cancel
-              </button>
-              <button type="submit" className="btn-primary">
-                Register
+            <div className="flex justify-end space-x-3 pt-2">
+              <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+              <button type="submit" disabled={isSubmitting} className="btn-primary">
+                {isSubmitting ? <div className="loader" /> : "Create"}
               </button>
             </div>
           </form>
@@ -462,188 +272,552 @@ function AddFacultyModal({ onClose }) {
   );
 }
 
-// Department Management Component
+// ─── Department Management ─────────────────────────────────────────────────────
+
 function DepartmentManagement() {
-  const [departments, setDepartments] = useState([
-    {
-      id: 1,
-      name: "Computer Science",
-      code: "CS",
-      hod: "Dr. John Smith",
-      faculty_count: 12,
-    },
-    {
-      id: 2,
-      name: "Physics",
-      code: "PHY",
-      hod: "Dr. Sarah Johnson",
-      faculty_count: 8,
-    },
-    {
-      id: 3,
-      name: "Mathematics",
-      code: "MATH",
-      hod: "Dr. Michael Brown",
-      faculty_count: 10,
-    },
-    { id: 4, name: "Chemistry", code: "CHEM", hod: null, faculty_count: 6 },
-  ]);
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [departments, setDepartments] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+
+  const load = async () => {
+    setIsLoading(true);
+    try {
+      const r = await adminAPI.getDepartments();
+      setDepartments(r.data || []);
+    } catch {
+      setDepartments([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
 
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="btn-primary inline-flex items-center"
-        >
+        <button onClick={() => setShowAdd(true)} className="btn-primary inline-flex items-center">
           <PlusIcon className="h-5 w-5 mr-2" />
           Create Department
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {departments.map((dept) => (
-          <div key={dept.id} className="card">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {dept.name}
-                </h3>
-                <p className="text-sm text-gray-500">Code: {dept.code}</p>
-              </div>
-              <BuildingOfficeIcon className="h-8 w-8 text-gray-300" />
-            </div>
-            <div className="mt-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Head of Department:</span>
-                <span className="font-medium text-gray-900">
-                  {dept.hod || "Not Assigned"}
+      {isLoading ? (
+        <div className="flex items-center justify-center h-48"><div className="loader" /></div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {departments.map((dept) => (
+            <div key={dept.id} className="card">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">{dept.name}</h3>
+                  <p className="text-sm text-gray-500">Code: {dept.code}</p>
+                </div>
+                <span className={clsx("badge", dept.is_active ? "badge-approved" : "badge-rejected")}>
+                  {dept.is_active ? "Active" : "Inactive"}
                 </span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Faculty Count:</span>
-                <span className="font-medium text-gray-900">
-                  {dept.faculty_count}
-                </span>
+              <div className="mt-3 text-sm text-gray-500">
+                HoD ID: {dept.hod_id ?? "Not assigned"}
               </div>
             </div>
-            <div className="mt-4 flex space-x-2">
-              <button className="btn-secondary text-sm flex-1">Edit</button>
-              <button className="btn-secondary text-sm flex-1">
-                Assign HoD
+          ))}
+          {departments.length === 0 && (
+            <div className="col-span-2 text-center py-12 text-gray-400">
+              No departments yet. Create an institution first, then add departments.
+            </div>
+          )}
+        </div>
+      )}
+
+      {showAdd && <AddDepartmentModal onClose={() => setShowAdd(false)} onSuccess={load} />}
+    </div>
+  );
+}
+
+function AddDepartmentModal({ onClose, onSuccess }) {
+  const [institutions, setInstitutions] = useState([]);
+  const [form, setForm] = useState({ institution_id: "", code: "", name: "", hod_wallet_address: "" });
+  const [error, setError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    adminAPI.listInstitutions().then((r) => setInstitutions(r.data || [])).catch(() => {});
+  }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await adminAPI.createDepartment({
+        institution_id: parseInt(form.institution_id),
+        code: form.code.toUpperCase(),
+        name: form.name,
+        hod_wallet_address: form.hod_wallet_address || undefined,
+      });
+      onSuccess();
+      onClose();
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      setError(Array.isArray(detail) ? detail[0]?.msg : detail || err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="flex items-center justify-center min-h-screen px-4">
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={onClose} />
+        <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Create Department</h2>
+          {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-600">{error}</div>}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="label">Institution *</label>
+              <select required value={form.institution_id} onChange={(e) => setForm({ ...form, institution_id: e.target.value })} className="input">
+                <option value="">Select institution...</option>
+                {institutions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Department Code *</label>
+              <input required value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="input uppercase" placeholder="CS" />
+            </div>
+            <div>
+              <label className="label">Department Name *</label>
+              <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" placeholder="Computer Science" />
+            </div>
+            <div>
+              <label className="label">HoD Wallet Address</label>
+              <input value={form.hod_wallet_address} onChange={(e) => setForm({ ...form, hod_wallet_address: e.target.value })} className="input font-mono" placeholder="0x... (optional)" />
+            </div>
+            <div className="flex justify-end space-x-3 pt-2">
+              <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+              <button type="submit" disabled={isSubmitting} className="btn-primary">
+                {isSubmitting ? <div className="loader" /> : "Create"}
               </button>
             </div>
-          </div>
-        ))}
+          </form>
+        </div>
       </div>
     </div>
   );
 }
 
-// Blockchain Stats Component
-function BlockchainStats() {
-  const [stats, setStats] = useState({
-    totalBlocks: 1234,
-    totalTransactions: 567,
-    networkPeers: 4,
-    lastBlockTime: new Date().toISOString(),
+// ─── Faculty Management ─────────────────────────────────────────────────────────
+
+function FacultyManagement() {
+  const [users, setUsers] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const load = async () => {
+    setIsLoading(true);
+    try {
+      const params = roleFilter ? { role: roleFilter } : {};
+      const r = await adminAPI.getUsers(params);
+      setUsers(r.data || []);
+    } catch {
+      setUsers([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [roleFilter]);
+
+  const filtered = users.filter(
+    (u) =>
+      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (u.email || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.wallet_address.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex gap-3 flex-1">
+          <div className="relative flex-1 max-w-md">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by name, email, or wallet..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="input pl-10"
+            />
+          </div>
+          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="input w-36">
+            <option value="">All roles</option>
+            <option value="faculty">Faculty</option>
+            <option value="hod">HoD</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <button onClick={() => setShowAddModal(true)} className="btn-primary inline-flex items-center">
+          <PlusIcon className="h-5 w-5 mr-2" />
+          Add User
+        </button>
+      </div>
+
+      <div className="card overflow-hidden">
+        {isLoading ? (
+          <div className="flex items-center justify-center h-64"><div className="loader" /></div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="table-header">Name</th>
+                  <th className="table-header">Role</th>
+                  <th className="table-header">Email</th>
+                  <th className="table-header">Wallet</th>
+                  <th className="table-header">Credits</th>
+                  <th className="table-header">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filtered.map((u) => (
+                  <tr key={u.id} className="hover:bg-gray-50">
+                    <td className="table-cell font-medium text-gray-900">{u.name}</td>
+                    <td className="table-cell">
+                      <span className={clsx("badge", u.role === "admin" ? "badge-flagged" : u.role === "hod" ? "badge-pending" : "badge-approved")}>
+                        {u.role}
+                      </span>
+                    </td>
+                    <td className="table-cell text-gray-500">{u.email || "—"}</td>
+                    <td className="table-cell font-mono text-xs text-gray-500">
+                      {u.wallet_address.slice(0, 10)}...{u.wallet_address.slice(-6)}
+                    </td>
+                    <td className="table-cell font-medium text-green-600">{u.total_credits}</td>
+                    <td className="table-cell">
+                      <span className={clsx("badge", u.is_active ? "badge-approved" : "badge-rejected")}>
+                        {u.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="table-cell text-center text-gray-400 py-8">No users found.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showAddModal && <AddUserModal onClose={() => setShowAddModal(false)} onSuccess={load} />}
+    </div>
+  );
+}
+
+function AddUserModal({ onClose, onSuccess }) {
+  const [institutions, setInstitutions] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [form, setForm] = useState({
+    wallet_address: "",
+    name: "",
+    email: "",
+    employee_id: "",
+    role: "faculty",
+    institution_id: "",
+    department_code: "",
   });
+  const [error, setError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    institutesAPI.list().then((r) => setInstitutions(r.data || [])).catch(() => {});
+  }, []);
+
+  const handleInstitutionChange = async (e) => {
+    const id = e.target.value;
+    setForm((f) => ({ ...f, institution_id: id, department_code: "" }));
+    if (!id) { setDepartments([]); return; }
+    try {
+      const r = await institutesAPI.getDepartments(id);
+      setDepartments(r.data || []);
+    } catch {
+      setDepartments([]);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await adminAPI.createUser({
+        wallet_address: form.wallet_address,
+        name: form.name,
+        email: form.email || undefined,
+        employee_id: form.employee_id || undefined,
+        role: form.role,
+        institution_id: form.institution_id ? parseInt(form.institution_id) : undefined,
+        department_code: form.department_code || undefined,
+      });
+      onSuccess();
+      onClose();
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      setError(Array.isArray(detail) ? detail[0]?.msg : detail || err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="flex items-center justify-center min-h-screen px-4 py-8">
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={onClose} />
+        <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Add User</h2>
+          {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-600">{error}</div>}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="label">Wallet Address *</label>
+              <input required value={form.wallet_address} onChange={(e) => setForm({ ...form, wallet_address: e.target.value })} className="input font-mono" placeholder="0x..." />
+            </div>
+            <div>
+              <label className="label">Full Name *</label>
+              <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" />
+            </div>
+            <div>
+              <label className="label">Email</label>
+              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input" />
+            </div>
+            <div>
+              <label className="label">Employee ID</label>
+              <input value={form.employee_id} onChange={(e) => setForm({ ...form, employee_id: e.target.value })} className="input" />
+            </div>
+            <div>
+              <label className="label">Role *</label>
+              <select required value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="input">
+                <option value="faculty">Faculty</option>
+                <option value="hod">Head of Department</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Institution</label>
+              <select value={form.institution_id} onChange={handleInstitutionChange} className="input">
+                <option value="">Select institution...</option>
+                {institutions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Department</label>
+              <select
+                value={form.department_code}
+                onChange={(e) => setForm({ ...form, department_code: e.target.value })}
+                className="input"
+                disabled={!form.institution_id || departments.length === 0}
+              >
+                <option value="">{form.institution_id ? "Select department..." : "Select institution first"}</option>
+                {departments.map((d) => <option key={d.id} value={d.code}>{d.name} ({d.code})</option>)}
+              </select>
+            </div>
+            <div className="flex justify-end space-x-3 pt-2">
+              <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+              <button type="submit" disabled={isSubmitting} className="btn-primary">
+                {isSubmitting ? <div className="loader" /> : "Create User"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pending Approvals ─────────────────────────────────────────────────────────
+
+function PendingApprovals() {
+  const [pending, setPending] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [approving, setApproving] = useState(null);
+
+  const load = async () => {
+    setIsLoading(true);
+    try {
+      const r = await adminAPI.getPendingUsers();
+      setPending(r.data || []);
+    } catch {
+      setPending([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleApprove = async (walletAddress, name) => {
+    setApproving(walletAddress);
+    try {
+      await adminAPI.approveUser(walletAddress);
+      setPending((prev) => prev.filter((u) => u.wallet_address !== walletAddress));
+    } catch (err) {
+      alert(err.response?.data?.detail || `Failed to approve ${name}`);
+    } finally {
+      setApproving(null);
+    }
+  };
+
+  if (isLoading) return <div className="flex items-center justify-center h-48"><div className="loader" /></div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Pending Registrations</h2>
+          <p className="text-sm text-gray-500">Users who have registered and are awaiting approval</p>
+        </div>
+        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+          {pending.length} pending
+        </span>
+      </div>
+
+      {pending.length === 0 ? (
+        <div className="card text-center py-12">
+          <ShieldCheckIcon className="mx-auto h-12 w-12 text-gray-300" />
+          <p className="mt-3 text-gray-500">No pending registrations</p>
+        </div>
+      ) : (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="table-header">Name</th>
+                  <th className="table-header">Role</th>
+                  <th className="table-header">Email</th>
+                  <th className="table-header">Employee ID</th>
+                  <th className="table-header">Wallet</th>
+                  <th className="table-header">Registered</th>
+                  <th className="table-header">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {pending.map((u) => (
+                  <tr key={u.id} className="hover:bg-gray-50">
+                    <td className="table-cell font-medium text-gray-900">{u.name}</td>
+                    <td className="table-cell">
+                      <span className={clsx("badge", u.role === "hod" ? "badge-pending" : "badge-approved")}>
+                        {u.role}
+                      </span>
+                    </td>
+                    <td className="table-cell text-gray-500">{u.email || "—"}</td>
+                    <td className="table-cell text-gray-500">{u.employee_id || "—"}</td>
+                    <td className="table-cell font-mono text-xs text-gray-500">
+                      {u.wallet_address.slice(0, 10)}...{u.wallet_address.slice(-6)}
+                    </td>
+                    <td className="table-cell text-gray-500 text-sm">
+                      {new Date(u.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="table-cell">
+                      <button
+                        onClick={() => handleApprove(u.wallet_address, u.name)}
+                        disabled={approving === u.wallet_address}
+                        className="btn-primary text-sm py-1 px-3"
+                      >
+                        {approving === u.wallet_address ? <div className="loader" /> : "Approve"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Blockchain Stats ───────────────────────────────────────────────────────────
+
+function BlockchainStats() {
+  const [status, setStatus] = useState(null);
+  const [contracts, setContracts] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([adminAPI.getBlockchainStatus(), adminAPI.getContracts()])
+      .then(([statusResp, contractsResp]) => {
+        setStatus(statusResp.data);
+        setContracts(contractsResp.data || []);
+      })
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  if (isLoading) return <div className="flex items-center justify-center h-48"><div className="loader" /></div>;
 
   return (
     <div className="space-y-6">
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card">
-          <p className="text-sm text-gray-500">Total Blocks</p>
-          <p className="text-2xl font-bold text-gray-900">
-            {stats.totalBlocks}
+          <p className="text-sm text-gray-500">Connection</p>
+          <p className={clsx("text-lg font-bold", status?.connected ? "text-green-600" : "text-red-600")}>
+            {status?.connected ? "Connected" : "Disconnected"}
           </p>
         </div>
         <div className="card">
-          <p className="text-sm text-gray-500">Total Transactions</p>
-          <p className="text-2xl font-bold text-gray-900">
-            {stats.totalTransactions}
-          </p>
+          <p className="text-sm text-gray-500">Chain ID</p>
+          <p className="text-lg font-bold text-gray-900">{status?.chain_id ?? "—"}</p>
         </div>
         <div className="card">
-          <p className="text-sm text-gray-500">Network Peers</p>
-          <p className="text-2xl font-bold text-gray-900">
-            {stats.networkPeers}
-          </p>
-        </div>
-        <div className="card">
-          <p className="text-sm text-gray-500">Last Block</p>
-          <p className="text-sm font-mono text-gray-900">
-            {new Date(stats.lastBlockTime).toLocaleString()}
-          </p>
+          <p className="text-sm text-gray-500">Block Number</p>
+          <p className="text-lg font-bold text-gray-900">{status?.block_number ?? "—"}</p>
         </div>
       </div>
 
-      {/* Network info */}
       <div className="card bg-gradient-to-r from-gray-800 to-gray-900 text-white">
         <h3 className="text-lg font-semibold mb-4">Network Configuration</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-sm text-gray-400">Chain ID</p>
-            <p className="font-mono">1337</p>
+            <p className="text-sm text-gray-400">RPC URL</p>
+            <p className="font-mono text-sm">{status?.rpc_url ?? "—"}</p>
           </div>
           <div>
             <p className="text-sm text-gray-400">Consensus</p>
             <p>IBFT 2.0 (PoA)</p>
           </div>
-          <div>
-            <p className="text-sm text-gray-400">Block Period</p>
-            <p>2 seconds</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-400">Network</p>
-            <p>Hyperledger Besu</p>
-          </div>
         </div>
       </div>
 
-      {/* Contract addresses */}
       <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Deployed Contracts
-        </h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Deployed Contracts</h3>
         <div className="space-y-3">
-          <ContractInfo
-            name="SALFAccessControl"
-            address="0x5FbDB2315678afecb367f032d93F642f64180aa3"
-          />
-          <ContractInfo
-            name="AcademicCreditLedger"
-            address="0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
-          />
-          <ContractInfo
-            name="ContributionRegistry"
-            address="0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
-          />
+          {contracts.map((c) => (
+            <div key={c.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">{c.name}</p>
+                <p className="font-mono text-sm text-gray-500">{c.address}</p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="w-2 h-2 bg-green-500 rounded-full" />
+                <span className="text-sm text-green-600">Deployed</span>
+              </div>
+            </div>
+          ))}
+          {contracts.length === 0 && (
+            <p className="text-sm text-gray-400">No contracts configured.</p>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-// Contract Info Component
-function ContractInfo({ name, address }) {
-  return (
-    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-      <div>
-        <p className="font-medium text-gray-900">{name}</p>
-        <p className="font-mono text-sm text-gray-500">{address}</p>
-      </div>
-      <div className="flex items-center space-x-2">
-        <span className="w-2 h-2 bg-green-500 rounded-full" />
-        <span className="text-sm text-green-600">Deployed</span>
-      </div>
-    </div>
-  );
-}
+// ─── Shared Components ──────────────────────────────────────────────────────────
 
-// Stat Card Component
 function StatCard({ title, value, icon: Icon, color }) {
   const colorClasses = {
     blue: "bg-blue-100 text-blue-600",
@@ -661,25 +835,10 @@ function StatCard({ title, value, icon: Icon, color }) {
           <Icon className="h-6 w-6" />
         </div>
         <div>
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
+          <p className="text-2xl font-bold text-gray-900">{value ?? "—"}</p>
           <p className="text-sm text-gray-500">{title}</p>
         </div>
       </div>
-    </div>
-  );
-}
-
-// Status Indicator Component
-function StatusIndicator({ label, status }) {
-  return (
-    <div className="flex items-center space-x-2">
-      <span
-        className={clsx(
-          "w-2 h-2 rounded-full",
-          status === "online" ? "bg-green-500" : "bg-red-500",
-        )}
-      />
-      <span className="text-sm text-gray-300">{label}</span>
     </div>
   );
 }

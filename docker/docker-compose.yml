@@ -104,10 +104,16 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-salf_user}:${POSTGRES_PASSWORD:-salf_password}@postgres:5432/${POSTGRES_DB:-salf_db}
       - REDIS_URL=redis://redis:6379
-      - BLOCKCHAIN_RPC_URL=http://besu-node1:8545
+      - BESU_RPC_URL=http://besu-node1:8545
+      - BESU_CHAIN_ID=${BESU_CHAIN_ID:-1337}
+      - BESU_PRIVATE_KEY=${BESU_PRIVATE_KEY:-}
+      - ACCESS_CONTROL_ADDRESS=${ACCESS_CONTROL_ADDRESS:-}
+      - ACADEMIC_CREDIT_ADDRESS=${ACADEMIC_CREDIT_ADDRESS:-}
+      - CONTRIBUTION_REGISTRY_ADDRESS=${CONTRIBUTION_REGISTRY_ADDRESS:-}
       - IPFS_API_URL=http://ipfs:5001
-      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
-      - ENVIRONMENT=production
+      - IPFS_GATEWAY_URL=http://ipfs:8080
+      - SECRET_KEY=${JWT_SECRET:-your-secret-key-change-in-production}
+      - DEBUG=false
     volumes:
       - ../backend:/app
       - ml_models:/app/ml_models
