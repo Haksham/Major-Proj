@@ -15,3 +15,9 @@ venv/
 blockchain/node_modules/
 blockchain/artifacts/
 blockchain/cache/
+
+# Docker runtime data
+docker/ipfs/data/
+
+# IDE
+.vscode/

@@ -61,3 +61,20 @@
 04:18:59.816700 version@stat F·[3] S·99KiB[99KiB] Sc·[0.75]
 04:18:59.827967 db@janitor F·5 G·0
 04:18:59.828004 db@open done T·27.123627ms
+=============== May 8, 2026 (UTC) ===============
+21:18:19.447619 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+21:18:19.450523 version@stat F·[3] S·99KiB[99KiB] Sc·[0.75]
+21:18:19.450839 db@open opening
+21:18:19.451879 journal@recovery F·1
+21:18:19.452016 journal@recovery recovering @13
+21:18:19.453609 memdb@flush created L0@15 N·9 S·15KiB "/F5..6HQ,v48":"/pr..XR4,v49"
+21:18:19.454133 version@stat F·[4] S·114KiB[114KiB] Sc·[1.00]
+21:18:19.459209 db@janitor F·6 G·0
+21:18:19.459487 db@open done T·8.330667ms
+21:18:19.459575 table@compaction L0·4 -> L1·0 S·114KiB Q·50
+21:18:19.477411 table@build created L1@18 N·14 S·15KiB "/F5..6HQ,v48":"/pr..XR4,v49"
+21:18:19.477743 version@stat F·[0 1] S·15KiB[0B 15KiB] Sc·[0.00 0.00]
+21:18:19.479571 table@compaction committed F-3 S-98KiB Ke·0 D·32 T·19.662542ms
+21:18:19.480088 table@remove removed @12
+21:18:19.480568 table@remove removed @9
+21:18:19.481025 table@remove removed @2
