@@ -8,10 +8,19 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from app.schemas.schemas import UserResponse, UserRole, DepartmentCreate, DepartmentResponse, UserUpdate
+from pydantic import BaseModel, Field
+from typing import Optional as _Opt
+from app.schemas.schemas import UserResponse, UserRole, Designation, DepartmentCreate, DepartmentResponse, UserUpdate
+
+
+class _DeptCreate(BaseModel):
+    """Department creation payload for institute-admin — institution_id comes from JWT."""
+    code: str = Field(..., min_length=2, max_length=20)
+    name: str = Field(..., min_length=2, max_length=255)
+    hod_wallet_address: _Opt[str] = Field(None, pattern=r"^0x[a-fA-F0-9]{40}$")
 from app.core.security import get_current_user, require_institute_admin
 from app.core.database import get_db
-from app.models.database import User, Department, Institution, UserRole as DBUserRole
+from app.models.database import User, Department, Institution, UserRole as DBUserRole, Designation as DBDesignation
 
 router = APIRouter(prefix="/institute-admin", tags=["Institute Administration"])
 
@@ -24,6 +33,7 @@ def _user_to_response(u: User) -> UserResponse:
         email=u.email,
         employee_id=u.employee_id,
         role=UserRole(u.role.value),
+        designation=Designation(u.designation.value) if u.designation else None,
         institution_id=u.institution_id,
         department_id=u.department_id,
         is_active=u.is_active,
@@ -163,8 +173,13 @@ async def assign_hod(
     if not user.department_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has no department assigned.")
 
-    user.role = DBUserRole.HOD
     dept = await db.get(Department, user.department_id)
+    if dept and dept.hod_id and dept.hod_id != user.id:
+        old_hod = await db.get(User, dept.hod_id)
+        if old_hod:
+            old_hod.role = DBUserRole.FACULTY
+
+    user.role = DBUserRole.HOD
     if dept:
         dept.hod_id = user.id
 
@@ -189,16 +204,12 @@ async def list_departments(
 
 @router.post("/departments", response_model=DepartmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_department(
-    dept: DepartmentCreate,
+    dept: _DeptCreate,
     current_user: dict = Depends(require_institute_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a department under this institution."""
+    """Create a department under this institution. institution_id is taken from the JWT."""
     institution_id = _get_institution_id(current_user)
-
-    # Institute admins can only create in their own institution
-    if dept.institution_id != institution_id and current_user.get("role") != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot create department in another institution.")
 
     existing = (await db.execute(
         select(Department).where(

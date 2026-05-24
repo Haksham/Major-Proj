@@ -21,6 +21,13 @@ class UserRole(str, enum.Enum):
     ADMIN = "admin"
 
 
+class Designation(str, enum.Enum):
+    PROFESSOR = "professor"
+    ASSOCIATE_PROFESSOR = "associate_professor"
+    ASSISTANT_PROFESSOR = "assistant_professor"
+    STAFF = "staff"
+
+
 class ContributionCategory(str, enum.Enum):
     REFEREED_JOURNAL = "refereed_journal"
     INTERNATIONAL_BOOK = "international_book"
@@ -94,6 +101,7 @@ class User(Base):
     institution_id = Column(Integer, ForeignKey("institutions.id"), nullable=True)
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
 
+    designation = Column(Enum(Designation), nullable=True)
     is_active = Column(Boolean, default=True)
     total_credits = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)

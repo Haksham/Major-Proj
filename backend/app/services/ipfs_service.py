@@ -171,11 +171,16 @@ class IPFSService:
 
 
 class MockIPFSService(IPFSService):
-    """Mock IPFS service for development/testing when IPFS is not available."""
-    
+    """Mock IPFS service for development when IPFS is not available. Files are persisted to disk."""
+
+    _STORE_DIR = Path(__file__).resolve().parent.parent.parent / ".mock_ipfs_store"
+
     def __init__(self):
-        self._storage: Dict[str, bytes] = {}
         self._connected = True
+        self._STORE_DIR.mkdir(parents=True, exist_ok=True)
+
+    def _file_path(self, cid: str) -> Path:
+        return self._STORE_DIR / cid
 
     def _base58btc_encode(self, data: bytes) -> str:
         alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
@@ -184,55 +189,42 @@ class MockIPFSService(IPFSService):
         while num > 0:
             num, rem = divmod(num, 58)
             encoded = alphabet[rem] + encoded
-        # Preserve leading zeros as '1'
-        pad = 0
-        for b in data:
-            if b == 0:
-                pad += 1
-            else:
-                break
+        pad = sum(1 for b in data if b == 0)
         return ("1" * pad) + (encoded or "")
 
     def _mock_cid_v0(self, content: bytes) -> str:
-        """
-        Generate a CIDv0 (base58btc) from content bytes.
-        CIDv0 = base58btc(multihash(sha2-256(content))).
-        """
         digest = hashlib.sha256(content).digest()
-        multihash = b"\x12\x20" + digest  # sha2-256 (0x12) + 32 bytes (0x20)
+        multihash = b"\x12\x20" + digest
         return self._base58btc_encode(multihash)
-    
+
     @property
     def is_connected(self) -> bool:
         return True
-    
-    async def upload_file(
-        self,
-        file_content: bytes,
-        filename: str
-    ) -> Dict[str, Any]:
-        # Generate a deterministic CIDv0-like identifier (not published to public IPFS)
+
+    async def upload_file(self, file_content: bytes, filename: str) -> Dict[str, Any]:
         content_hash = self.calculate_sha256(file_content)
         mock_cid = self._mock_cid_v0(file_content)
-        
-        self._storage[mock_cid] = file_content
-        
+
+        async with aiofiles.open(self._file_path(mock_cid), "wb") as f:
+            await f.write(file_content)
+
         return {
             "cid": mock_cid,
             "size": len(file_content),
             "filename": filename,
             "metadata_hash": content_hash,
-            # Expose via API proxy route (works for mock + real IPFS)
-            "gateway_url": f"{settings.API_V1_PREFIX}/contributions/ipfs/{mock_cid}"
+            "gateway_url": f"{settings.API_V1_PREFIX}/contributions/ipfs/{mock_cid}",
         }
-    
+
     async def get_file(self, cid: str) -> bytes:
-        if cid not in self._storage:
-            raise FileNotFoundError(f"CID not found: {cid}")
-        return self._storage[cid]
-    
+        path = self._file_path(cid)
+        if not path.exists():
+            raise FileNotFoundError(f"CID not found in local store: {cid}")
+        async with aiofiles.open(path, "rb") as f:
+            return await f.read()
+
     async def check_exists(self, cid: str) -> bool:
-        return cid in self._storage
+        return self._file_path(cid).exists()
 
 
 def get_ipfs_service() -> IPFSService:

@@ -49,6 +49,7 @@ def _to_response(c: ContributionORM) -> ContributionResponse:
         id=c.id,
         blockchain_id=c.blockchain_id,
         faculty_id=c.faculty_id,
+        faculty_address=c.faculty_address,
         category=ContributionCategory(c.category.value),
         title=c.title,
         abstract=c.abstract,

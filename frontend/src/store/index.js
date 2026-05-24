@@ -314,7 +314,7 @@ export const useContributionStore = create((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const response = await fetch("/api/v1/contributions/pending", {
+      const response = await fetch("/api/v1/contributions/pending/review", {
         headers: {
           Authorization: `Bearer ${token}`,
         },

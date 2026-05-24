@@ -10,7 +10,7 @@ import redis.asyncio as aioredis
 
 from app.schemas.schemas import (
     NonceRequest, NonceResponse, RegisterRequest, InstituteRegisterRequest,
-    AuthRequest, AuthResponse, RefreshRequest, UserResponse, UserRole,
+    AuthRequest, AuthResponse, RefreshRequest, UserResponse, UserRole, Designation,
 )
 from app.core.security import (
     verify_signature, create_access_token, create_refresh_token,
@@ -18,14 +18,14 @@ from app.core.security import (
 )
 from app.core.database import get_db
 from app.core.redis_client import get_redis
-from app.models.database import User, Department, Institution, UserRole as DBUserRole
+from app.models.database import User, Department, Institution, UserRole as DBUserRole, Designation as DBDesignation
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 NONCE_TTL = 300  # seconds
 
 # The seeded admin wallet — can login without pre-registration
-_ADMIN_WALLET = "0xfe3b557e8fb62b89f4916b721be55ceb828dbd73"
+_ADMIN_WALLET = "0xa0dbb25771341a35d6be0e676a311b4eddd82b71"
 
 
 def _to_response(u: User) -> UserResponse:
@@ -36,6 +36,7 @@ def _to_response(u: User) -> UserResponse:
         email=u.email,
         employee_id=u.employee_id,
         role=UserRole(u.role.value),
+        designation=Designation(u.designation.value) if u.designation else None,
         institution_id=u.institution_id,
         department_id=u.department_id,
         is_active=u.is_active,
@@ -125,6 +126,7 @@ async def register(
         email=body.email,
         employee_id=body.employee_id,
         role=DBUserRole(body.role.value),
+        designation=DBDesignation(body.designation.value) if body.designation else None,
         institution_id=body.institution_id,
         department_id=department.id,
         is_active=False,

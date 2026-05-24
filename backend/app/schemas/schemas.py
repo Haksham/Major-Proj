@@ -17,6 +17,13 @@ class UserRole(str, Enum):
     ADMIN = "admin"
 
 
+class Designation(str, Enum):
+    PROFESSOR = "professor"
+    ASSOCIATE_PROFESSOR = "associate_professor"
+    ASSISTANT_PROFESSOR = "assistant_professor"
+    STAFF = "staff"
+
+
 class ContributionCategory(str, Enum):
     REFEREED_JOURNAL = "refereed_journal"
     INTERNATIONAL_BOOK = "international_book"
@@ -96,6 +103,7 @@ class RegisterRequest(BaseModel):
     wallet_address: str = Field(..., pattern=r"^0x[a-fA-F0-9]{40}$")
     name: str = Field(..., min_length=2, max_length=255)
     role: UserRole = Field(..., description="faculty or hod only")
+    designation: Optional[Designation] = None
     institution_id: int
     department_code: str = Field(..., min_length=1, max_length=20)
     employee_id: Optional[str] = None
@@ -141,6 +149,7 @@ class UserCreate(UserBase):
     """Admin-only user creation (bypasses institution check)."""
     wallet_address: str = Field(..., pattern=r"^0x[a-fA-F0-9]{40}$")
     role: UserRole = UserRole.FACULTY
+    designation: Optional[Designation] = None
     institution_id: Optional[int] = None
     department_code: Optional[str] = None
 
@@ -149,6 +158,7 @@ class UserUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
     employee_id: Optional[str] = None
+    designation: Optional[Designation] = None
     is_active: Optional[bool] = None
     institution_id: Optional[int] = None
 
@@ -157,6 +167,7 @@ class UserResponse(UserBase):
     id: int
     wallet_address: str
     role: UserRole
+    designation: Optional[Designation] = None
     institution_id: Optional[int]
     department_id: Optional[int]
     is_active: bool
@@ -189,6 +200,7 @@ class ContributionResponse(BaseModel):
     id: int
     blockchain_id: Optional[int]
     faculty_id: int
+    faculty_address: Optional[str]
     category: ContributionCategory
     title: str
     abstract: Optional[str]

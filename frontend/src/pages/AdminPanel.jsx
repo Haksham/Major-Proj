@@ -526,6 +526,7 @@ function AddUserModal({ onClose, onSuccess }) {
     email: "",
     employee_id: "",
     role: "faculty",
+    designation: "",
     institution_id: "",
     department_code: "",
   });
@@ -559,6 +560,7 @@ function AddUserModal({ onClose, onSuccess }) {
         email: form.email || undefined,
         employee_id: form.employee_id || undefined,
         role: form.role,
+        designation: form.designation || undefined,
         institution_id: form.institution_id ? parseInt(form.institution_id) : undefined,
         department_code: form.department_code || undefined,
       });
@@ -602,6 +604,16 @@ function AddUserModal({ onClose, onSuccess }) {
                 <option value="faculty">Faculty</option>
                 <option value="hod">Head of Department</option>
                 <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Designation</label>
+              <select value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} className="input">
+                <option value="">Select designation...</option>
+                <option value="professor">Professor</option>
+                <option value="associate_professor">Associate Professor</option>
+                <option value="assistant_professor">Assistant Professor</option>
+                <option value="staff">Staff</option>
               </select>
             </div>
             <div>

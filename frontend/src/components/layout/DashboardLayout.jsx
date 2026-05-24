@@ -16,6 +16,7 @@ import {
   ChevronDownIcon,
   BellIcon,
   CubeIcon,
+  BuildingOffice2Icon,
 } from "@heroicons/react/24/outline";
 
 const navigation = [
@@ -23,31 +24,37 @@ const navigation = [
     name: "Dashboard",
     href: "/dashboard",
     icon: HomeIcon,
-    roles: ["faculty", "hod", "admin"],
+    roles: ["faculty", "hod", "institute_admin", "admin"],
   },
   {
     name: "My Contributions",
     href: "/contributions",
     icon: DocumentTextIcon,
-    roles: ["faculty", "hod", "admin"],
+    roles: ["faculty", "hod"],
   },
   {
     name: "Submit New",
     href: "/contributions/new",
     icon: PlusCircleIcon,
-    roles: ["faculty", "hod", "admin"],
+    roles: ["faculty", "hod"],
   },
   {
     name: "Portfolio",
     href: "/portfolio",
     icon: BriefcaseIcon,
-    roles: ["faculty", "hod", "admin"],
+    roles: ["faculty", "hod"],
   },
   {
     name: "Review Queue",
     href: "/reviews",
     icon: ClipboardDocumentCheckIcon,
-    roles: ["hod", "admin"],
+    roles: ["hod"],
+  },
+  {
+    name: "Institute Admin",
+    href: "/institute-admin",
+    icon: BuildingOffice2Icon,
+    roles: ["institute_admin"],
   },
   {
     name: "Admin Panel",
@@ -56,6 +63,13 @@ const navigation = [
     roles: ["admin"],
   },
 ];
+
+const ROLE_LABELS = {
+  admin: "Master Admin",
+  institute_admin: "Institute Admin",
+  hod: "Head of Department",
+  faculty: "Faculty",
+};
 
 function DashboardLayout() {
   const location = useLocation();
@@ -207,17 +221,19 @@ function DashboardLayout() {
                       <p className="text-sm font-medium text-gray-900">
                         {user?.name}
                       </p>
-                      <p className="text-xs text-gray-500 capitalize">
-                        {user?.role}
+                      <p className="text-xs text-gray-500">
+                        {ROLE_LABELS[user?.role] || user?.role}
                       </p>
                     </div>
-                    <Link
-                      to="/portfolio"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                      onClick={() => setUserMenuOpen(false)}
-                    >
-                      My Portfolio
-                    </Link>
+                    {(user?.role === "faculty" || user?.role === "hod") && (
+                      <Link
+                        to="/portfolio"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        onClick={() => setUserMenuOpen(false)}
+                      >
+                        My Portfolio
+                      </Link>
+                    )}
                     <button
                       onClick={handleLogout}
                       className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center"

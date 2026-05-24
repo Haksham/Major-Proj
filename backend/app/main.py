@@ -18,11 +18,24 @@ async def _init_db():
     from app.core.database import engine, AsyncSessionLocal
     from app.models.database import Base, User, UserRole
 
-    # Add INSTITUTE_ADMIN enum value if it doesn't exist yet (safe migration)
+    # Safe enum migrations (must run outside a transaction)
     async with engine.execution_options(isolation_level="AUTOCOMMIT").connect() as conn:
         await conn.execute(text(
             "ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'INSTITUTE_ADMIN'"
         ))
+        # Create designation enum if missing, then add column
+        await conn.execute(text("""
+            DO $$ BEGIN
+                CREATE TYPE userdesignation AS ENUM (
+                    'professor','associate_professor','assistant_professor','staff'
+                );
+            EXCEPTION WHEN duplicate_object THEN NULL;
+            END $$;
+        """))
+        await conn.execute(text("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS designation userdesignation;
+        """))
 
     # Create tables (no-op if they already exist)
     async with engine.begin() as conn:
@@ -30,7 +43,7 @@ async def _init_db():
 
     # Seed admin wallet if not present
     from sqlalchemy import select
-    ADMIN_WALLET = "0xfe3b557e8fb62b89f4916b721be55ceb828dbd73"
+    ADMIN_WALLET = "0xa0dbb25771341a35d6be0e676a311b4eddd82b71"
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(User).where(User.wallet_address == ADMIN_WALLET)

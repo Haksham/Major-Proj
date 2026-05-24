@@ -10,6 +10,25 @@ import {
   AcademicCapIcon,
 } from "@heroicons/react/24/outline";
 
+function MetaMaskIcon() {
+  return (
+    <svg className="w-5 h-5" viewBox="0 0 35 33" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M32.958 1L19.888 10.535l2.436-5.766L32.958 1z" fill="#E17726" stroke="#E17726" strokeWidth=".25" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M2.042 1l12.956 9.623-2.32-5.854L2.042 1zM28.18 23.406l-3.48 5.332 7.445 2.049 2.136-7.268-6.101-.113zM1.733 23.519l2.12 7.268 7.43-2.05-3.464-5.33-6.086.112z" fill="#E27625" stroke="#E27625" strokeWidth=".25" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M10.903 14.445l-2.074 3.134 7.381.337-.247-7.938-5.06 4.467zM24.097 14.445l-5.138-4.557-.169 8.028 7.381-.337-2.074-3.134zM11.283 28.738l4.44-2.163-3.83-2.986-.61 5.149zM19.277 26.575l4.44 2.163-.594-5.149-3.846 2.986z" fill="#E27625" stroke="#E27625" strokeWidth=".25" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M23.717 28.738l-4.44-2.163.355 2.901-.04 1.224 4.125-1.962zM11.283 28.738l4.125 1.962-.025-1.224.34-2.901-4.44 2.163z" fill="#D5BFB2" stroke="#D5BFB2" strokeWidth=".25" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M15.47 21.792l-3.69-1.084 2.603-1.193 1.087 2.277zM19.53 21.792l1.087-2.277 2.618 1.193-3.705 1.084z" fill="#233447" stroke="#233447" strokeWidth=".25" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M11.283 28.738l.633-5.332-4.097.113 3.464 5.22zM23.084 23.406l.633 5.332 3.464-5.22-4.097-.112zM26.171 17.579l-7.381.337.686 3.876 1.087-2.277 2.618 1.193 2.99-3.129zM11.78 20.708l2.603-1.193 1.072 2.277.7-3.876-7.381-.337 3.006 3.129z" fill="#CC6228" stroke="#CC6228" strokeWidth=".25" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M8.829 17.579l3.1 6.047-.1-3.003-3-3.044zM23.186 20.623l-.115 3.003 3.1-6.047-2.985 3.044zM15.47 17.916l-.7 3.876.87 4.494.197-5.924-.367-2.446zM19.53 17.916l-.352 2.43.182 5.94.87-4.494-.7-3.876z" fill="#E27625" stroke="#E27625" strokeWidth=".25" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M20.23 21.792l-.87 4.494.625.44 3.846-2.986.115-3.003-3.716.055zM11.78 20.708l.1 3.003 3.845 2.986.625-.44-.855-4.494-3.715-.055z" fill="#F5841F" stroke="#F5841F" strokeWidth=".25" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M20.27 30.7l.04-1.224-.33-.284h-4.96l-.315.284.025 1.224-4.125-1.962 1.441 1.179 2.92 2.02h5.003l2.935-2.02 1.426-1.179-4.06 1.962z" fill="#C0AC9D" stroke="#C0AC9D" strokeWidth=".25" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M19.277 26.575l-.625-.44h-3.304l-.625.44-.34 2.901.315-.284h4.96l.33.284-.71-2.901z" fill="#161616" stroke="#161616" strokeWidth=".25" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M33.518 11.089l1.117-5.374L32.958 1 19.277 10.17l5.076 4.275 7.17 2.093 1.58-1.843-.685-.496 1.087-.99-.839-.65 1.087-.84-.235-.62zM.365 5.715L1.482 11.09l-.25.62 1.103.84-.84.65 1.088.99-.686.496 1.566 1.843 7.17-2.093 5.076-4.275L2.042 1 .365 5.715z" fill="#763E1A" stroke="#763E1A" strokeWidth=".25" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M31.523 16.538l-7.17-2.093 2.074 3.134-3.1 6.047 4.082-.056h6.101l-2.12-7.032h.133zM10.647 14.445l-7.17 2.093-2.105 7.032h6.086l4.082.056-3.1-6.047 2.207-3.134zM18.79 17.916l.455-7.746 2.09-5.654h-9.27l2.09 5.654.455 7.746.168 2.46.015 5.909h3.784l.015-5.909.198-2.46z" fill="#F5841F" stroke="#F5841F" strokeWidth=".25" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
 function Login() {
   const navigate = useNavigate();
   const {
@@ -154,7 +173,7 @@ function Login() {
                       <div className="loader" />
                     ) : (
                       <>
-                        <img src="/metamask.svg" alt="MetaMask" className="w-5 h-5" />
+                        <MetaMaskIcon />
                         <span>Connect with MetaMask</span>
                       </>
                     )}
@@ -300,6 +319,7 @@ function RegistrationModal({ walletAddress, onClose }) {
     email: "",
     employee_id: "",
     role: "faculty",
+    designation: "",
     institution_id: "",
     department_code: "",
   });
@@ -331,6 +351,7 @@ function RegistrationModal({ walletAddress, onClose }) {
         email: form.email || undefined,
         employee_id: form.employee_id || undefined,
         role: form.role,
+        designation: form.designation || undefined,
         institution_id: parseInt(form.institution_id),
         department_code: form.department_code,
       });
@@ -418,6 +439,22 @@ function RegistrationModal({ walletAddress, onClose }) {
               >
                 <option value="faculty">Faculty</option>
                 <option value="hod">Head of Department (HoD)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="label">Designation *</label>
+              <select
+                required
+                value={form.designation}
+                onChange={(e) => setForm({ ...form, designation: e.target.value })}
+                className="input"
+              >
+                <option value="">Select designation...</option>
+                <option value="professor">Professor</option>
+                <option value="associate_professor">Associate Professor</option>
+                <option value="assistant_professor">Assistant Professor</option>
+                <option value="staff">Staff</option>
               </select>
             </div>
 

@@ -289,18 +289,33 @@ function ContributionCard({ contribution, onView, onViewDocument }) {
   );
 }
 
-// Contribution Detail Modal
-function ContributionDetailModal({ contribution, onClose, onViewDocument }) {
+// Contribution Detail Modal — always fetches fresh data when opened
+function ContributionDetailModal({ contribution: initial, onClose, onViewDocument }) {
+  const token = useAuthStore((s) => s.token);
+  const [contribution, setContribution] = useState(initial);
+
+  useEffect(() => {
+    // Re-fetch so the modal always shows the latest AI scores, not the stale list cache
+    fetch(`/api/v1/contributions/${initial.id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data) setContribution(data); })
+      .catch(() => {});
+  }, [initial.id, token]);
+
+  const qualityScore = contribution.ai_quality_score;
+  const noveltyScore = contribution.novelty_percentage;
+  const credits = contribution.final_credits;
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-        {/* Backdrop */}
         <div
           className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
           onClick={onClose}
         />
 
-        {/* Modal */}
         <div className="relative bg-white rounded-xl shadow-xl max-w-2xl w-full mx-auto p-6 overflow-hidden">
           <h2 className="text-xl font-bold text-gray-900 mb-4">
             Contribution Details
@@ -316,28 +331,19 @@ function ContributionDetailModal({ contribution, onClose, onViewDocument }) {
               <div>
                 <label className="label">Category</label>
                 <p className="text-gray-900">
-                  {CATEGORY_NAMES[contribution.category]}
+                  {CATEGORY_NAMES[contribution.category] || contribution.category}
                 </p>
               </div>
               <div>
                 <label className="label">Status</label>
-                <p className="text-gray-900 capitalize">
-                  {contribution.status}
-                </p>
+                <p className="text-gray-900 capitalize">{contribution.status}</p>
               </div>
-            </div>
-
-            <div>
-              <label className="label">Description</label>
-              <p className="text-gray-700">
-                {contribution.description || "No description provided"}
-              </p>
             </div>
 
             {contribution.abstract && (
               <div>
                 <label className="label">Abstract</label>
-                <p className="text-gray-700">{contribution.abstract}</p>
+                <p className="text-gray-700 text-sm line-clamp-4">{contribution.abstract}</p>
               </div>
             )}
 
@@ -345,52 +351,61 @@ function ContributionDetailModal({ contribution, onClose, onViewDocument }) {
               <div>
                 <label className="label">Quality Score</label>
                 <p className="text-gray-900 font-medium">
-                  {contribution.quality_score || "Pending"}%
+                  {qualityScore > 0 ? `${qualityScore.toFixed(1)}%` : "Pending"}
                 </p>
               </div>
               <div>
                 <label className="label">Novelty Score</label>
                 <p className="text-gray-900 font-medium">
-                  {contribution.novelty_score || "Pending"}%
+                  {noveltyScore > 0 ? `${noveltyScore.toFixed(1)}%` : "Pending"}
                 </p>
               </div>
               <div>
                 <label className="label">Final Credits</label>
                 <p className="text-green-600 font-bold">
-                  {contribution.final_credits || "Pending"}
+                  {credits > 0 ? credits : "Pending"}
                 </p>
               </div>
             </div>
 
-            {contribution.blockchain_hash && (
+            {contribution.base_credits > 0 && (
+              <p className="text-xs text-gray-400">
+                Base credits: {contribution.base_credits} — final credits awarded on HoD validation
+              </p>
+            )}
+
+            {contribution.is_flagged && contribution.flag_reason && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                Flagged: {contribution.flag_reason}
+              </div>
+            )}
+
+            {contribution.review_notes && (
+              <div>
+                <label className="label">Review Notes</label>
+                <p className="text-gray-700 text-sm">{contribution.review_notes}</p>
+              </div>
+            )}
+
+            {contribution.blockchain_tx_hash && (
               <div>
                 <label className="label">Blockchain Transaction</label>
-                <p className="font-mono text-sm text-gray-600 break-all">
-                  {contribution.blockchain_hash}
-                </p>
+                <p className="font-mono text-xs text-gray-500 break-all">{contribution.blockchain_tx_hash}</p>
               </div>
             )}
 
             {contribution.ipfs_hash && (
               <div>
                 <label className="label">IPFS Hash</label>
-                <p className="font-mono text-sm text-gray-600 break-all">
-                  {contribution.ipfs_hash}
-                </p>
+                <p className="font-mono text-xs text-gray-500 break-all">{contribution.ipfs_hash}</p>
               </div>
             )}
           </div>
 
           <div className="mt-6 flex justify-end space-x-3">
-            <button onClick={onClose} className="btn-secondary">
-              Close
-            </button>
+            <button onClick={onClose} className="btn-secondary">Close</button>
             {contribution.ipfs_hash && (
-              <button
-                type="button"
-                onClick={onViewDocument}
-                className="btn-primary"
-              >
+              <button type="button" onClick={onViewDocument} className="btn-primary">
                 View Document
               </button>
             )}

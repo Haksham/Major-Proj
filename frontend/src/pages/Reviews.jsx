@@ -11,19 +11,35 @@ import {
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 
-const CATEGORY_NAMES = [
-  "Guest Lectures",
-  "Journal Publication",
-  "Book",
-  "Book Chapter",
-  "Patent",
-  "Conference",
-  "Workshop",
-  "Seminar",
-  "Project",
-  "Award",
-  "Faculty Development Program",
-];
+async function openDocument(cid) {
+  try {
+    const token = useAuthStore.getState().token;
+    const res = await fetch(`/api/v1/contributions/ipfs/${cid}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+    const blob = await res.blob();
+    window.open(URL.createObjectURL(blob), "_blank");
+  } catch (err) {
+    alert("Could not load document: " + err.message);
+  }
+}
+
+const CATEGORY_LABELS = {
+  refereed_journal: "Refereed Journal",
+  international_book: "International Book",
+  national_book: "National Book",
+  book_chapter: "Book Chapter",
+  international_lecture: "International Lecture",
+  national_conference: "National Conference",
+  patent_filed: "Patent Filed",
+  patent_granted: "Patent Granted",
+  editorial_work: "Editorial Work",
+  research_project: "Research Project",
+};
+
+const categoryLabel = (cat) =>
+  CATEGORY_LABELS[cat] || cat?.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || "Unknown";
 
 function Reviews() {
   const { user } = useAuthStore();
@@ -120,7 +136,7 @@ function Reviews() {
             <div>
               <p className="text-sm text-green-700">AI Evaluated</p>
               <p className="text-2xl font-bold text-green-900">
-                {pendingReviews.filter((r) => r.ai_evaluated).length}
+                {pendingReviews.filter((r) => r.ai_quality_score > 0).length}
               </p>
             </div>
           </div>
@@ -209,17 +225,19 @@ function ReviewCard({ review, onView }) {
                 {review.title}
               </h3>
               <p className="mt-1 text-sm text-gray-500">
-                {CATEGORY_NAMES[review.category]} • Submitted by{" "}
-                {review.faculty_name || "Faculty"}
+                {categoryLabel(review.category)} • Submitted by{" "}
+                {review.faculty_address
+                  ? `${review.faculty_address.slice(0, 8)}...${review.faculty_address.slice(-4)}`
+                  : "Faculty"}
               </p>
             </div>
             <span
               className={clsx(
                 "badge",
-                review.ai_evaluated ? "badge-validated" : "badge-pending",
+                review.ai_quality_score > 0 ? "badge-validated" : "badge-pending",
               )}
             >
-              {review.ai_evaluated ? "AI Evaluated" : "Pending AI"}
+              {review.ai_quality_score > 0 ? "AI Evaluated" : "Pending AI"}
             </span>
           </div>
 
@@ -230,24 +248,24 @@ function ReviewCard({ review, onView }) {
           )}
 
           <div className="mt-4 flex flex-wrap items-center gap-4">
-            {review.ai_evaluated && (
+            {review.ai_quality_score > 0 && (
               <>
                 <div className="text-sm">
-                  <span className="text-gray-500">Quality Score:</span>
+                  <span className="text-gray-500">Quality:</span>
                   <span className="ml-1 font-medium text-gray-900">
-                    {review.quality_score}%
+                    {review.ai_quality_score.toFixed(1)}%
                   </span>
                 </div>
                 <div className="text-sm">
-                  <span className="text-gray-500">Novelty Score:</span>
+                  <span className="text-gray-500">Novelty:</span>
                   <span className="ml-1 font-medium text-gray-900">
-                    {review.novelty_score}%
+                    {review.novelty_percentage.toFixed(1)}%
                   </span>
                 </div>
                 <div className="text-sm">
-                  <span className="text-gray-500">Estimated Credits:</span>
+                  <span className="text-gray-500">Credits:</span>
                   <span className="ml-1 font-medium text-green-600">
-                    {review.estimated_credits}
+                    {review.final_credits || review.base_credits}
                   </span>
                 </div>
               </>
@@ -326,14 +344,14 @@ function ReviewModal({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="label">Category</label>
-                  <p className="text-gray-900">
-                    {CATEGORY_NAMES[review.category]}
-                  </p>
+                  <p className="text-gray-900">{categoryLabel(review.category)}</p>
                 </div>
                 <div>
                   <label className="label">Submitted By</label>
-                  <p className="text-gray-900">
-                    {review.faculty_name || "Faculty"}
+                  <p className="text-gray-900 font-mono text-sm">
+                    {review.faculty_address
+                      ? `${review.faculty_address.slice(0, 10)}...${review.faculty_address.slice(-6)}`
+                      : "—"}
                   </p>
                 </div>
               </div>
@@ -352,39 +370,59 @@ function ReviewModal({
                 </div>
               )}
 
+              {/* Document View */}
+              {review.ipfs_hash && (
+                <div>
+                  <label className="label">Document</label>
+                  <button
+                    type="button"
+                    onClick={() => openDocument(review.ipfs_hash)}
+                    className="inline-flex items-center text-sm text-primary-600 hover:text-primary-700 font-medium underline"
+                  >
+                    View uploaded document ↗
+                  </button>
+                </div>
+              )}
+
+              {/* Credits */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label">Base Credits (UGC)</label>
+                  <p className="text-2xl font-bold text-gray-900">{review.base_credits ?? "—"}</p>
+                </div>
+                <div>
+                  <label className="label">Final Credits</label>
+                  <p className="text-2xl font-bold text-green-600">
+                    {review.final_credits > 0 ? review.final_credits : <span className="text-sm text-gray-400">Pending AI</span>}
+                  </p>
+                </div>
+              </div>
+
               {/* AI Evaluation Results */}
-              {review.ai_evaluated && (
+              {review.ai_quality_score > 0 ? (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <h4 className="font-medium text-blue-900 flex items-center">
                     <CubeIcon className="h-5 w-5 mr-2" />
                     AI Evaluation Results
                   </h4>
-                  <div className="mt-3 grid grid-cols-3 gap-4">
+                  <div className="mt-3 grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-blue-700">Quality Score</p>
                       <p className="text-2xl font-bold text-blue-900">
-                        {review.quality_score}%
+                        {review.ai_quality_score.toFixed(1)}%
                       </p>
                     </div>
                     <div>
                       <p className="text-sm text-blue-700">Novelty Score</p>
                       <p className="text-2xl font-bold text-blue-900">
-                        {review.novelty_score}%
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-blue-700">Estimated Credits</p>
-                      <p className="text-2xl font-bold text-green-600">
-                        {review.estimated_credits}
+                        {review.novelty_percentage.toFixed(1)}%
                       </p>
                     </div>
                   </div>
-                  {review.evaluation_details && (
-                    <div className="mt-3 text-sm text-blue-800">
-                      <p className="font-medium">Benchmark Analysis:</p>
-                      <p>{review.evaluation_details}</p>
-                    </div>
-                  )}
+                </div>
+              ) : (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-700">
+                  AI evaluation is pending — scores will appear once processing completes.
                 </div>
               )}
 

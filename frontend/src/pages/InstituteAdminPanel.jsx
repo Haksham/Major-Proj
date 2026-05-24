@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, Link, useLocation } from "react-router-dom";
 import { instituteAdminAPI } from "../services/api";
+import { useAuthStore } from "../store";
 import {
   UsersIcon,
   BuildingOfficeIcon,
@@ -176,6 +177,7 @@ function IAPending() {
                 <tr>
                   <th className="table-header">Name</th>
                   <th className="table-header">Role</th>
+                  <th className="table-header">Designation</th>
                   <th className="table-header">Email</th>
                   <th className="table-header">Employee ID</th>
                   <th className="table-header">Wallet</th>
@@ -189,6 +191,11 @@ function IAPending() {
                     <td className="table-cell font-medium text-gray-900">{u.name}</td>
                     <td className="table-cell">
                       <span className={clsx("badge", u.role === "hod" ? "badge-pending" : "badge-approved")}>{u.role}</span>
+                    </td>
+                    <td className="table-cell text-gray-500 text-sm">
+                      {u.designation
+                        ? u.designation.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+                        : "—"}
                     </td>
                     <td className="table-cell text-gray-500">{u.email || "—"}</td>
                     <td className="table-cell text-gray-500">{u.employee_id || "—"}</td>
@@ -230,19 +237,17 @@ function IAPending() {
 // ─── Departments ───────────────────────────────────────────────────────────────
 
 function IADepartments() {
+  const { user } = useAuthStore();
   const [departments, setDepartments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [institutionId, setInstitutionId] = useState(null);
+
+  const institutionId = user?.institution_id;
 
   const load = () => {
     setIsLoading(true);
     instituteAdminAPI.getDepartments()
-      .then((r) => {
-        const depts = r.data || [];
-        setDepartments(depts);
-        if (depts.length > 0) setInstitutionId(depts[0].institution_id);
-      })
+      .then((r) => setDepartments(r.data || []))
       .catch(() => setDepartments([]))
       .finally(() => setIsLoading(false));
   };
@@ -254,11 +259,22 @@ function IADepartments() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <button onClick={() => setShowAdd(true)} className="btn-primary inline-flex items-center">
+        <button
+          onClick={() => setShowAdd(true)}
+          disabled={!institutionId}
+          title={!institutionId ? "No institution assigned to your account" : undefined}
+          className="btn-primary inline-flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+        >
           <PlusIcon className="h-5 w-5 mr-2" />
           Create Department
         </button>
       </div>
+
+      {!institutionId && (
+        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-700">
+          Your account has no institution assigned. Contact the master admin.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {departments.map((dept) => (
@@ -281,13 +297,13 @@ function IADepartments() {
       </div>
 
       {showAdd && institutionId && (
-        <AddDeptModal institutionId={institutionId} onClose={() => setShowAdd(false)} onSuccess={load} />
+        <AddDeptModal onClose={() => setShowAdd(false)} onSuccess={load} />
       )}
     </div>
   );
 }
 
-function AddDeptModal({ institutionId, onClose, onSuccess }) {
+function AddDeptModal({ onClose, onSuccess }) {
   const [form, setForm] = useState({ code: "", name: "", hod_wallet_address: "" });
   const [error, setError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -298,7 +314,6 @@ function AddDeptModal({ institutionId, onClose, onSuccess }) {
     setIsSubmitting(true);
     try {
       await instituteAdminAPI.createDepartment({
-        institution_id: institutionId,
         code: form.code.toUpperCase(),
         name: form.name,
         hod_wallet_address: form.hod_wallet_address || undefined,
@@ -404,6 +419,7 @@ function IAFaculty() {
               <tr>
                 <th className="table-header">Name</th>
                 <th className="table-header">Role</th>
+                <th className="table-header">Designation</th>
                 <th className="table-header">Email</th>
                 <th className="table-header">Credits</th>
                 <th className="table-header">Actions</th>
@@ -415,6 +431,11 @@ function IAFaculty() {
                   <td className="table-cell font-medium text-gray-900">{u.name}</td>
                   <td className="table-cell">
                     <span className={clsx("badge", u.role === "hod" ? "badge-pending" : "badge-approved")}>{u.role}</span>
+                  </td>
+                  <td className="table-cell text-gray-500 text-sm">
+                    {u.designation
+                      ? u.designation.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+                      : "—"}
                   </td>
                   <td className="table-cell text-gray-500">{u.email || "—"}</td>
                   <td className="table-cell font-medium text-green-600">{u.total_credits}</td>
@@ -432,7 +453,7 @@ function IAFaculty() {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={5} className="table-cell text-center text-gray-400 py-8">No faculty found.</td></tr>
+                <tr><td colSpan={6} className="table-cell text-center text-gray-400 py-8">No faculty found.</td></tr>
               )}
             </tbody>
           </table>

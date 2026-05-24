@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.schemas.schemas import (
-    UserCreate, UserResponse, UserUpdate, UserRole,
+    UserCreate, UserResponse, UserUpdate, UserRole, Designation,
     DepartmentCreate, DepartmentResponse,
     InstitutionCreate, InstitutionResponse, ContractInfo,
 )
@@ -17,7 +17,7 @@ from app.core.security import get_current_user, require_admin
 from app.core.database import get_db
 from app.services.blockchain_service import blockchain_service
 from app.core.config import settings
-from app.models.database import User, Department, Institution, UserRole as DBUserRole
+from app.models.database import User, Department, Institution, UserRole as DBUserRole, Designation as DBDesignation
 
 router = APIRouter(prefix="/admin", tags=["Administration"])
 
@@ -41,6 +41,7 @@ def _user_to_response(u: User) -> UserResponse:
         email=u.email,
         employee_id=u.employee_id,
         role=UserRole(u.role.value),
+        designation=Designation(u.designation.value) if u.designation else None,
         institution_id=u.institution_id,
         department_id=u.department_id,
         is_active=u.is_active,
@@ -148,6 +149,7 @@ async def create_user(
         email=user_data.email,
         employee_id=user_data.employee_id,
         role=DBUserRole(user_data.role.value),
+        designation=DBDesignation(user_data.designation.value) if user_data.designation else None,
         institution_id=user_data.institution_id,
         department_id=dept_id,
         is_active=True,
