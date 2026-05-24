@@ -125,4 +125,8 @@ export const profileAPI = {
   updateProfile: (data) => api.patch("/profile/me", data),
 };
 
+export const transactionsAPI = {
+  lookup: (q) => api.get("/transactions/lookup", { params: { q } }),
+};
+
 export default api;

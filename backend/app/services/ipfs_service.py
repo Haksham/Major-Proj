@@ -70,13 +70,15 @@ class IPFSService:
         Returns:
             Dict with CID, size, and gateway URL
         """
+        import asyncio
         client = self._get_client()
-        
+
         # Calculate metadata hash
         metadata_hash = self.calculate_sha256(file_content)
-        
-        # Upload to IPFS
-        result = client.add(io.BytesIO(file_content))
+
+        # client.add() is synchronous — run in a thread to avoid blocking the event loop
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, client.add, io.BytesIO(file_content))
         
         cid = result["Hash"]
         size = result["Size"]

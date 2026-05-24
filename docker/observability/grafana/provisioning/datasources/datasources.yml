@@ -13,3 +13,9 @@ datasources:
     access: proxy
     url: http://loki:3100
     editable: true
+
+  - name: TestData
+    uid: testdata
+    type: grafana-testdata-datasource
+    access: proxy
+    editable: true

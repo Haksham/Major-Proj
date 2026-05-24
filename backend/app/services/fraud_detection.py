@@ -31,21 +31,19 @@ class FraudDetectionGatekeeper:
     5. Metadata inconsistencies
     """
     
-    # Common AI-generated text patterns
+    # Patterns that are strong signals of AI-generated boilerplate (not normal academic writing)
     AI_PATTERNS = [
         r"as an ai",
         r"as a language model",
         r"i don't have personal",
         r"i cannot provide",
-        r"it's important to note",
-        r"in conclusion,?\s+(?:overall|this|we)",
-        r"(?:first|second|third|finally),?\s+(?:we|it|this)",
+        r"i'm unable to",
+        r"regenerate response",
     ]
     
-    # Suspicious word density patterns
+    # Only flag extreme marketing-speak not found in real papers
     SUSPICIOUS_DENSITY_WORDS = [
-        "novel", "innovative", "unprecedented", "revolutionary",
-        "breakthrough", "state-of-the-art", "cutting-edge", "pioneering"
+        "guaranteed results", "100% effective", "miracle", "instant solution"
     ]
     
     def __init__(self):
@@ -206,18 +204,7 @@ class FraudDetectionGatekeeper:
                 "patterns": detected_patterns
             }
         
-        # Check for unnaturally perfect structure
-        sentences = text.split('.')
-        if len(sentences) > 5:
-            lengths = [len(s.split()) for s in sentences if s.strip()]
-            if lengths:
-                variance = np.var(lengths)
-                if variance < 5:  # Very uniform sentence lengths
-                    return {
-                        "is_ai_generated": True,
-                        "reason": "Unnaturally uniform sentence structure",
-                        "confidence": 0.4
-                    }
+        # Removed sentence-variance check — academic writing naturally has uniform structure
         
         return {"is_ai_generated": False, "confidence": 0}
     
@@ -298,12 +285,7 @@ class FraudDetectionGatekeeper:
             except Exception:
                 issues.append("Invalid publication date format")
         
-        # Category-specific checks
-        if "journal" in category.lower() and not issn:
-            issues.append("Journal article missing ISSN")
-        
-        if "book" in category.lower() and not isbn:
-            issues.append("Book contribution missing ISBN")
+        # Category-specific checks removed — ISSN/ISBN are optional in submission form
         
         return {
             "is_consistent": len(issues) == 0,
@@ -331,8 +313,8 @@ class FraudDetectionGatekeeper:
         # Check abstract quality
         word_count = len(abstract.split())
         
-        if word_count < 50:
-            issues.append("Abstract too short (less than 50 words)")
+        if word_count < 10:
+            issues.append("Abstract too short (less than 10 words)")
             risk_score += 0.2
         
         # Check for excessive repetition

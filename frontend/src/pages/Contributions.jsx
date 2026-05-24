@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useAuthStore, useContributionStore } from "../store";
 import {
@@ -253,7 +253,8 @@ function ContributionCard({ contribution, onView, onViewDocument }) {
                 {contribution.final_credits} Credits
               </span>
             )}
-            {contribution.quality_score && (
+            {contribution.quality_score > 0 &&
+              Date.now() - new Date(contribution.created_at).getTime() >= EVAL_DELAY_MS && (
               <span>Quality: {contribution.quality_score}%</span>
             )}
             {contribution.ipfs_hash && (
@@ -289,10 +290,17 @@ function ContributionCard({ contribution, onView, onViewDocument }) {
   );
 }
 
+const EVAL_DELAY_MS = 60_000;
+
 // Contribution Detail Modal — always fetches fresh data when opened
 function ContributionDetailModal({ contribution: initial, onClose, onViewDocument }) {
   const token = useAuthStore((s) => s.token);
   const [contribution, setContribution] = useState(initial);
+  const [evalElapsed, setEvalElapsed] = useState(() => {
+    const ageMs = Date.now() - new Date(initial.created_at).getTime();
+    return Math.min(ageMs, EVAL_DELAY_MS);
+  });
+  const intervalRef = useRef(null);
 
   useEffect(() => {
     // Re-fetch so the modal always shows the latest AI scores, not the stale list cache
@@ -303,6 +311,22 @@ function ContributionDetailModal({ contribution: initial, onClose, onViewDocumen
       .then((data) => { if (data) setContribution(data); })
       .catch(() => {});
   }, [initial.id, token]);
+
+  // Drive the 60-second eval countdown for freshly submitted contributions
+  useEffect(() => {
+    const ageMs = Date.now() - new Date(initial.created_at).getTime();
+    if (ageMs >= EVAL_DELAY_MS) return;
+    intervalRef.current = setInterval(() => {
+      const age = Date.now() - new Date(initial.created_at).getTime();
+      setEvalElapsed(Math.min(age, EVAL_DELAY_MS));
+      if (age >= EVAL_DELAY_MS) clearInterval(intervalRef.current);
+    }, 500);
+    return () => clearInterval(intervalRef.current);
+  }, [initial.created_at]);
+
+  const scoresReady = evalElapsed >= EVAL_DELAY_MS;
+  const evalProgress = Math.min(100, (evalElapsed / EVAL_DELAY_MS) * 100);
+  const secondsLeft = Math.max(0, Math.ceil((EVAL_DELAY_MS - evalElapsed) / 1000));
 
   const qualityScore = contribution.ai_quality_score;
   const noveltyScore = contribution.novelty_percentage;
@@ -347,26 +371,48 @@ function ContributionDetailModal({ contribution: initial, onClose, onViewDocumen
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="label">Quality Score</label>
-                <p className="text-gray-900 font-medium">
-                  {qualityScore > 0 ? `${qualityScore.toFixed(1)}%` : "Pending"}
-                </p>
+            {!scoresReady ? (
+              <div className="p-4 bg-primary-50 border border-primary-100 rounded-lg space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-primary-700 font-medium flex items-center">
+                    <svg className="animate-spin h-4 w-4 mr-2 text-primary-500" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    AI Evaluation in progress…
+                  </span>
+                  <span className="text-primary-500 text-xs">{secondsLeft}s</span>
+                </div>
+                <div className="w-full bg-primary-100 rounded-full h-1.5">
+                  <div
+                    className="h-1.5 rounded-full bg-primary-500 transition-all duration-500"
+                    style={{ width: `${evalProgress}%` }}
+                  />
+                </div>
+                <p className="text-xs text-primary-400">Quality and novelty scores will appear shortly.</p>
               </div>
-              <div>
-                <label className="label">Novelty Score</label>
-                <p className="text-gray-900 font-medium">
-                  {noveltyScore > 0 ? `${noveltyScore.toFixed(1)}%` : "Pending"}
-                </p>
+            ) : (
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="label">Quality Score</label>
+                  <p className="text-gray-900 font-medium">
+                    {qualityScore > 0 ? `${qualityScore.toFixed(1)}%` : "Pending"}
+                  </p>
+                </div>
+                <div>
+                  <label className="label">Novelty Score</label>
+                  <p className="text-gray-900 font-medium">
+                    {noveltyScore > 0 ? `${noveltyScore.toFixed(1)}%` : "Pending"}
+                  </p>
+                </div>
+                <div>
+                  <label className="label">Final Credits</label>
+                  <p className="text-green-600 font-bold">
+                    {credits > 0 ? credits : "Pending"}
+                  </p>
+                </div>
               </div>
-              <div>
-                <label className="label">Final Credits</label>
-                <p className="text-green-600 font-bold">
-                  {credits > 0 ? credits : "Pending"}
-                </p>
-              </div>
-            </div>
+            )}
 
             {contribution.base_credits > 0 && (
               <p className="text-xs text-gray-400">

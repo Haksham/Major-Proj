@@ -19,6 +19,7 @@ import {
   BuildingLibraryIcon,
   EnvelopeIcon,
   IdentificationIcon,
+  ClipboardDocumentIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 
@@ -168,10 +169,7 @@ export default function PublicPortfolio() {
                   {faculty.employee_id && (
                     <span className="flex items-center"><IdentificationIcon className="h-4 w-4 mr-1.5 text-gray-400" />ID: {faculty.employee_id}</span>
                   )}
-                  <span className="flex items-center font-mono text-xs text-gray-400">
-                    <BuildingLibraryIcon className="h-4 w-4 mr-1.5 text-gray-400" />
-                    {faculty.wallet_address.slice(0, 14)}...{faculty.wallet_address.slice(-8)}
-                  </span>
+                  <WalletAddress address={faculty.wallet_address} />
                 </div>
 
                 {faculty.bio && (
@@ -387,6 +385,34 @@ export default function PublicPortfolio() {
         </div>
       </div>
     </div>
+  );
+}
+
+function WalletAddress({ address }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(address).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <span className="flex items-center gap-1.5 font-mono text-xs text-gray-400">
+      <BuildingLibraryIcon className="h-4 w-4 shrink-0 text-gray-400" />
+      {address.slice(0, 14)}...{address.slice(-8)}
+      <button
+        onClick={handleCopy}
+        title={copied ? "Copied!" : "Copy wallet address"}
+        className="ml-0.5 text-gray-400 hover:text-gray-600 transition-colors"
+      >
+        {copied
+          ? <CheckCircleIcon className="h-3.5 w-3.5 text-green-500" />
+          : <ClipboardDocumentIcon className="h-3.5 w-3.5" />
+        }
+      </button>
+      {copied && <span className="text-green-500 not-mono font-sans">Copied!</span>}
+    </span>
   );
 }
 

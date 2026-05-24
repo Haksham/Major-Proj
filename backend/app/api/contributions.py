@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import Response
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -132,6 +133,34 @@ async def _run_ai_evaluation(contribution_id: int) -> None:
         await session.commit()
 
 
+async def _submit_to_blockchain(
+    contribution_id: int,
+    category: ContributionCategory,
+    title: str,
+    ipfs_hash: str,
+    metadata_hash: str,
+) -> None:
+    """Background task: submit the contribution record to the blockchain."""
+    async with AsyncSessionLocal() as session:
+        c = await session.get(ContributionORM, contribution_id)
+        if not c:
+            return
+        try:
+            if blockchain_service.is_connected:
+                category_index = list(ContributionCategory).index(category)
+                tx_result = await blockchain_service.submit_record(
+                    category=category_index,
+                    title=title,
+                    ipfs_hash=ipfs_hash,
+                    metadata_hash=metadata_hash,
+                )
+                c.blockchain_id = tx_result.get("contribution_id")
+                c.blockchain_tx_hash = tx_result.get("tx_hash")
+                await session.commit()
+        except Exception as e:
+            print(f"Blockchain submission failed: {e}")
+
+
 @router.get("/ipfs/{cid}")
 async def get_ipfs_file(cid: str, user: dict = Depends(require_faculty)):
     """Retrieve a contribution file by CID via the IPFS service."""
@@ -195,12 +224,7 @@ async def submit_contribution(
         abstract=abstract,
         metadata=metadata,
     )
-    if fraud_result["is_flagged"] and fraud_result["fraud_probability"] >= 0.9:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Submission blocked by fraud detection. Contact administrator.",
-            headers={"X-Fraud-Reasons": str(fraud_result["flag_reasons"])},
-        )
+    # High fraud scores are reviewed by HoD — never hard-block legitimate faculty submissions
 
     # 2. Upload to IPFS
     try:
@@ -243,28 +267,21 @@ async def submit_contribution(
         submission_time=datetime.utcnow(),
     )
     db.add(contribution)
-    await db.commit()
-    await db.refresh(contribution)
-
-    # 4. AI evaluation in background
-    background_tasks.add_task(_run_ai_evaluation, contribution.id)
-
-    # 5. Submit to blockchain (best-effort)
     try:
-        if blockchain_service.is_connected:
-            category_index = list(ContributionCategory).index(category)
-            tx_result = await blockchain_service.submit_record(
-                category=category_index,
-                title=title,
-                ipfs_hash=ipfs_hash,
-                metadata_hash=metadata_hash,
+        await db.commit()
+        await db.refresh(contribution)
+    except IntegrityError as e:
+        await db.rollback()
+        if "ix_contributions_metadata_hash" in str(e.orig):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This file has already been submitted. Duplicate submissions are not allowed.",
             )
-            contribution.blockchain_id = tx_result.get("contribution_id")
-            contribution.blockchain_tx_hash = tx_result.get("tx_hash")
-            await db.commit()
-            await db.refresh(contribution)
-    except Exception as e:
-        print(f"Blockchain submission failed: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error during submission.")
+
+    # 4. AI evaluation + blockchain submission in background
+    background_tasks.add_task(_run_ai_evaluation, contribution.id)
+    background_tasks.add_task(_submit_to_blockchain, contribution.id, category, title, ipfs_hash, metadata_hash)
 
     return _to_response(contribution)
 

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useContributionStore } from "../store";
 import {
@@ -8,6 +8,7 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   ArrowLeftIcon,
+  SparklesIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 
@@ -200,49 +201,25 @@ function SubmitContribution() {
   );
 
   if (submitSuccess) {
-    return (
-      <div className="max-w-2xl mx-auto">
-        <div className="card text-center py-12">
-          <CheckCircleIcon className="h-16 w-16 mx-auto text-green-500" />
-          <h2 className="mt-4 text-2xl font-bold text-gray-900">
-            Contribution Submitted Successfully!
-          </h2>
-          <p className="mt-2 text-gray-600">
-            Your contribution has been submitted and is pending review. You will
-            be notified once it's evaluated.
-          </p>
-          <div className="mt-6 flex justify-center space-x-4">
-            <button
-              onClick={() => navigate("/contributions")}
-              className="btn-primary"
-            >
-              View Contributions
-            </button>
-            <button
-              onClick={() => {
-                setSubmitSuccess(false);
-                setStep(1);
-                setFormData({
-                  category: "refereed_journal",
-                  title: "",
-                  description: "",
-                  abstract: "",
-                  authors: "",
-                  publication_venue: "",
-                  publication_date: "",
-                  doi: "",
-                  keywords: "",
-                });
-                setFiles([]);
-              }}
-              className="btn-secondary"
-            >
-              Submit Another
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    return <SubmitSuccessScreen
+      onViewContributions={() => navigate("/contributions")}
+      onSubmitAnother={() => {
+        setSubmitSuccess(false);
+        setStep(1);
+        setFormData({
+          category: "refereed_journal",
+          title: "",
+          description: "",
+          abstract: "",
+          authors: "",
+          publication_venue: "",
+          publication_date: "",
+          doi: "",
+          keywords: "",
+        });
+        setFiles([]);
+      }}
+    />;
   }
 
   return (
@@ -671,6 +648,81 @@ function SubmitContribution() {
             </button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+const EVAL_DELAY_MS = 60_000; // 1 minute
+
+function SubmitSuccessScreen({ onViewContributions, onSubmitAnother }) {
+  const [elapsed, setElapsed] = useState(0);
+  const evaluating = elapsed < EVAL_DELAY_MS;
+  const progress = Math.min(100, (elapsed / EVAL_DELAY_MS) * 100);
+
+  useEffect(() => {
+    const start = Date.now();
+    const interval = setInterval(() => {
+      const e = Date.now() - start;
+      setElapsed(e);
+      if (e >= EVAL_DELAY_MS) clearInterval(interval);
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  const secondsLeft = Math.max(0, Math.ceil((EVAL_DELAY_MS - elapsed) / 1000));
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <div className="card text-center py-12 px-8">
+        {evaluating ? (
+          <>
+            <div className="mx-auto w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mb-4">
+              <SparklesIcon className="h-8 w-8 text-primary-600 animate-pulse" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900">Submitted Successfully!</h2>
+            <p className="mt-2 text-gray-500">
+              Your contribution has been uploaded. The AI evaluation engine is now
+              analysing quality and novelty scores…
+            </p>
+
+            <div className="mt-6 space-y-2">
+              <div className="flex justify-between text-sm text-gray-500">
+                <span>AI Evaluation in progress</span>
+                <span>{secondsLeft}s remaining</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                <div
+                  className="h-2.5 rounded-full bg-primary-500 transition-all duration-500"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+
+            <p className="mt-4 text-xs text-gray-400">
+              Scores will be visible once evaluation completes.
+            </p>
+          </>
+        ) : (
+          <>
+            <CheckCircleIcon className="h-16 w-16 mx-auto text-green-500" />
+            <h2 className="mt-4 text-2xl font-bold text-gray-900">
+              Evaluation Complete!
+            </h2>
+            <p className="mt-2 text-gray-600">
+              Quality and novelty scores are ready. Your contribution is now
+              pending HoD review.
+            </p>
+            <div className="mt-6 flex justify-center space-x-4">
+              <button onClick={onViewContributions} className="btn-primary">
+                View Contributions
+              </button>
+              <button onClick={onSubmitAnother} className="btn-secondary">
+                Submit Another
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

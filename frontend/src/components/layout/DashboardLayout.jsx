@@ -18,6 +18,7 @@ import {
   CubeIcon,
   BuildingOffice2Icon,
   UsersIcon,
+  MagnifyingGlassCircleIcon,
 } from "@heroicons/react/24/outline";
 
 const navigation = [
@@ -74,6 +75,12 @@ const navigation = [
     href: "/admin",
     icon: Cog6ToothIcon,
     roles: ["admin"],
+  },
+  {
+    name: "Tx Explorer",
+    href: "/transactions",
+    icon: MagnifyingGlassCircleIcon,
+    roles: ["faculty", "hod", "institute_admin", "admin"],
   },
 ];
 

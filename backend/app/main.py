@@ -17,7 +17,7 @@ from app.core.monitoring import (
     SLOW_REQUESTS,
     metrics_response,
 )
-from app.api import auth, contributions, portfolio, admin, institutes, institute_admin, profile
+from app.api import auth, contributions, portfolio, admin, institutes, institute_admin, profile, transactions
 
 
 async def _init_db():
@@ -162,6 +162,7 @@ app.include_router(portfolio.router, prefix=settings.API_V1_PREFIX)
 app.include_router(admin.router, prefix=settings.API_V1_PREFIX)
 app.include_router(institute_admin.router, prefix=settings.API_V1_PREFIX)
 app.include_router(profile.router, prefix=settings.API_V1_PREFIX)
+app.include_router(transactions.router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/", tags=["Health"])
