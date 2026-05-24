@@ -223,7 +223,7 @@ class ContributionResponse(BaseModel):
 
 class ContributionReview(BaseModel):
     action: str = Field(..., pattern=r"^(validate|reject|flag)$")
-    notes: str = Field(..., min_length=10, max_length=1000)
+    notes: Optional[str] = Field(default="", max_length=1000)
 
 
 # ─── AI Evaluation Schemas ─────────────────────────────────────────────────────

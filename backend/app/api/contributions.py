@@ -259,7 +259,7 @@ async def list_contributions(
     """List contributions with optional filtering."""
     query = select(ContributionORM)
 
-    if user["role"] == "faculty":
+    if user["role"] in ("faculty", "hod"):
         query = query.where(ContributionORM.faculty_address == user["address"])
     if status:
         query = query.where(ContributionORM.status == DBStatus(status.value))
@@ -267,6 +267,75 @@ async def list_contributions(
         query = query.where(ContributionORM.category == DBCategory(category.value))
 
     query = query.offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(query)
+    return [_to_response(c) for c in result.scalars().all()]
+
+
+@router.get("/department/faculty")
+async def get_department_faculty_stats(
+    user: dict = Depends(require_hod),
+    db: AsyncSession = Depends(get_db),
+):
+    """Faculty list with contribution stats for the HoD's department."""
+    from app.models.database import User as UserORM
+    hod = await db.get(UserORM, user["faculty_id"])
+    if not hod or not hod.department_id:
+        return []
+
+    dept_result = await db.execute(
+        select(UserORM).where(
+            UserORM.department_id == hod.department_id,
+            UserORM.is_active == True,
+        ).order_by(UserORM.name)
+    )
+    faculty_list = dept_result.scalars().all()
+
+    output = []
+    for f in faculty_list:
+        c_result = await db.execute(
+            select(ContributionORM).where(ContributionORM.faculty_address == f.wallet_address)
+        )
+        contribs = c_result.scalars().all()
+        output.append({
+            "id": f.id,
+            "name": f.name,
+            "email": f.email,
+            "wallet_address": f.wallet_address,
+            "role": f.role.value,
+            "designation": f.designation.value if f.designation else None,
+            "total_credits": f.total_credits or 0.0,
+            "total_contributions": len(contribs),
+            "pending": sum(1 for c in contribs if c.status.value in ("pending", "under_review")),
+            "validated": sum(1 for c in contribs if c.status.value == "validated"),
+            "rejected": sum(1 for c in contribs if c.status.value == "rejected"),
+        })
+    return output
+
+
+@router.get("/department/contributions", response_model=List[ContributionResponse])
+async def get_department_contributions(
+    faculty_address: Optional[str] = None,
+    user: dict = Depends(require_hod),
+    db: AsyncSession = Depends(get_db),
+):
+    """All contributions from the HoD's department, optionally filtered by a faculty address."""
+    from app.models.database import User as UserORM
+    hod = await db.get(UserORM, user["faculty_id"])
+    if not hod or not hod.department_id:
+        return []
+
+    dept_result = await db.execute(
+        select(UserORM).where(UserORM.department_id == hod.department_id)
+    )
+    dept_addresses = {u.wallet_address for u in dept_result.scalars().all()}
+    if not dept_addresses:
+        return []
+
+    query = select(ContributionORM).where(ContributionORM.faculty_address.in_(dept_addresses))
+    if faculty_address:
+        query = query.where(ContributionORM.faculty_address == faculty_address.lower())
+    query = query.order_by(ContributionORM.submission_time.desc())
+
     result = await db.execute(query)
     return [_to_response(c) for c in result.scalars().all()]
 

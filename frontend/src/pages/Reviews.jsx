@@ -42,12 +42,12 @@ const categoryLabel = (cat) =>
   CATEGORY_LABELS[cat] || cat?.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || "Unknown";
 
 function Reviews() {
-  const { user } = useAuthStore();
   const { pendingReviews, fetchPendingReviews, reviewContribution, isLoading } =
     useContributionStore();
   const [selectedReview, setSelectedReview] = useState(null);
   const [reviewAction, setReviewAction] = useState(null); // 'approve' | 'reject'
   const [reviewComment, setReviewComment] = useState("");
+  const [reviewError, setReviewError] = useState(null);
   const [filter, setFilter] = useState("all");
 
   useEffect(() => {
@@ -56,19 +56,22 @@ function Reviews() {
 
   const handleReview = async (action) => {
     if (!selectedReview) return;
+    setReviewError(null);
+
+    const backendAction = action === "approve" ? "validate" : action;
 
     try {
       await reviewContribution(selectedReview.id, {
-        action,
-        comment: reviewComment,
-        reviewer_id: user?.id,
+        action: backendAction,
+        notes: reviewComment || "",
       });
 
       setSelectedReview(null);
       setReviewAction(null);
       setReviewComment("");
+      setReviewError(null);
     } catch (error) {
-      console.error("Failed to review contribution:", error);
+      setReviewError(error.message || "Failed to submit review. Please try again.");
     }
   };
 
@@ -199,6 +202,7 @@ function Reviews() {
             setSelectedReview(null);
             setReviewAction(null);
             setReviewComment("");
+            setReviewError(null);
           }}
           onApprove={() => handleReview("approve")}
           onReject={() => handleReview("reject")}
@@ -206,6 +210,7 @@ function Reviews() {
           setReviewAction={setReviewAction}
           reviewComment={reviewComment}
           setReviewComment={setReviewComment}
+          reviewError={reviewError}
           isLoading={isLoading}
         />
       )}
@@ -313,6 +318,7 @@ function ReviewModal({
   setReviewAction,
   reviewComment,
   setReviewComment,
+  reviewError,
   isLoading,
 }) {
   return (
@@ -486,7 +492,13 @@ function ReviewModal({
           </div>
 
           {/* Footer */}
-          <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
+          <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
+            {reviewError && (
+              <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+                {reviewError}
+              </div>
+            )}
+            <div className="flex justify-end space-x-3">
             <button onClick={onClose} className="btn-secondary">
               Cancel
             </button>
@@ -518,6 +530,7 @@ function ReviewModal({
                 Reject Contribution
               </button>
             )}
+            </div>
           </div>
         </div>
       </div>

@@ -17,6 +17,7 @@ import {
   BellIcon,
   CubeIcon,
   BuildingOffice2Icon,
+  UsersIcon,
 } from "@heroicons/react/24/outline";
 
 const navigation = [
@@ -48,6 +49,12 @@ const navigation = [
     name: "Review Queue",
     href: "/reviews",
     icon: ClipboardDocumentCheckIcon,
+    roles: ["hod"],
+  },
+  {
+    name: "Department Faculty",
+    href: "/hod/faculty",
+    icon: UsersIcon,
     roles: ["hod"],
   },
   {

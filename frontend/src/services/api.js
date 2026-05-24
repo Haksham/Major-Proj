@@ -63,6 +63,11 @@ export const contributionsAPI = {
     api.get("/contributions/pending/review", { params }),
   review: (id, reviewData) =>
     api.post(`/contributions/${id}/review`, reviewData),
+  getDepartmentFaculty: () => api.get("/contributions/department/faculty"),
+  getDepartmentContributions: (facultyAddress = null) =>
+    api.get("/contributions/department/contributions", {
+      params: facultyAddress ? { faculty_address: facultyAddress } : {},
+    }),
 };
 
 export const portfolioAPI = {

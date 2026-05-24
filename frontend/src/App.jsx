@@ -12,6 +12,7 @@ import Contributions from "./pages/Contributions";
 import SubmitContribution from "./pages/SubmitContribution";
 import Portfolio from "./pages/Portfolio";
 import Reviews from "./pages/Reviews";
+import HodFacultyView from "./pages/HodFacultyView";
 import AdminPanel from "./pages/AdminPanel";
 import InstituteAdminPanel from "./pages/InstituteAdminPanel";
 import NotFound from "./pages/NotFound";
@@ -87,6 +88,14 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={["hod", "admin"]}>
               <Reviews />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="hod/faculty"
+          element={
+            <ProtectedRoute allowedRoles={["hod"]}>
+              <HodFacultyView />
             </ProtectedRoute>
           }
         />
