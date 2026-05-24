@@ -267,6 +267,7 @@ async def refresh_token(request: RefreshRequest):
         "sub": payload.get("sub"),
         "role": payload.get("role"),
         "faculty_id": payload.get("faculty_id"),
+        "institution_id": payload.get("institution_id"),
     }
     return {"access_token": create_access_token(token_data), "token_type": "bearer"}
 

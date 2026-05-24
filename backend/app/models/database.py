@@ -101,7 +101,10 @@ class User(Base):
     institution_id = Column(Integer, ForeignKey("institutions.id"), nullable=True)
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
 
-    designation = Column(Enum(Designation), nullable=True)
+    designation = Column(
+        Enum(Designation, name="userdesignation", values_callable=lambda x: [e.value for e in x]),
+        nullable=True,
+    )
     is_active = Column(Boolean, default=True)
     total_credits = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)

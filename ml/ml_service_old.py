@@ -3,22 +3,37 @@ ML Service for SALF - Sentence-BERT based evaluation
 Provides NLP evaluation capabilities for academic contributions
 """
 
-import os
-import logging
-import numpy as np
-from contextlib import asynccontextmanager
-from typing import List, Dict, Optional, Any
-
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+import os
+from typing import List, Dict, Optional
+import logging
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Initialize FastAPI app
+app = FastAPI(
+    title="SALF ML Service",
+    description="NLP Evaluation Service for Academic Contributions",
+    version="1.0.0"
+)
+
+# Load model
 MODEL_NAME = os.getenv("MODEL_NAME", "all-MiniLM-L6-v2")
+model = None
+
+@app.on_event("startup")
+async def load_model():
+    """Load Sentence-BERT model on startup"""
+    global model
+    logger.info(f"Loading model: {MODEL_NAME}")
+    model = SentenceTransformer(MODEL_NAME)
+    logger.info("Model loaded successfully")
 
 # Benchmark attributes for academic evaluation
 BENCHMARK_ATTRIBUTES = {
@@ -67,68 +82,25 @@ CATEGORY_WEIGHTS = {
     "innovation": 0.15,
 }
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Lifespan context manager for startup and shutdown events."""
-    logger.info(f"Loading model: {MODEL_NAME}")
-    try:
-        model = SentenceTransformer(MODEL_NAME)
-        app.state.model = model
-        logger.info("Model loaded successfully")
-        
-        from gatekeeper import GatekeeperService
-        app.state.gatekeeper_service = GatekeeperService(model)
-        logger.info("Gatekeeper service initialized")
-        
-        # Pre-compute benchmark embeddings
-        benchmark_embeddings = {}
-        for category, attributes in BENCHMARK_ATTRIBUTES.items():
-            benchmark_embeddings[category] = model.encode(attributes)
-        app.state.benchmark_embeddings = benchmark_embeddings
-        logger.info("Benchmark embeddings computed")
-    except Exception as e:
-        logger.error(f"Failed to initialize services: {e}")
-        raise e
-        
-    yield
-    
-    # Cleanup on shutdown
-    app.state.model = None
-    app.state.gatekeeper_service = None
-    app.state.benchmark_embeddings = {}
-    logger.info("Cleaned up resources")
+# Pre-compute benchmark embeddings
+benchmark_embeddings = {}
 
-# Initialize FastAPI app
-app = FastAPI(
-    title="SALF ML Service",
-    description="NLP Evaluation Service for Academic Contributions",
-    version="1.0.0",
-    lifespan=lifespan
-)
+@app.on_event("startup")
+async def compute_benchmark_embeddings():
+    """Pre-compute embeddings for benchmark attributes"""
+    global benchmark_embeddings
+    for category, attributes in BENCHMARK_ATTRIBUTES.items():
+        benchmark_embeddings[category] = model.encode(attributes)
+    logger.info("Benchmark embeddings computed")
 
-# --- Dependencies ---
-def get_model(request: Request) -> SentenceTransformer:
-    if not hasattr(request.app.state, "model") or request.app.state.model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-    return request.app.state.model
 
-def get_gatekeeper(request: Request):
-    if not hasattr(request.app.state, "gatekeeper_service") or request.app.state.gatekeeper_service is None:
-        raise HTTPException(status_code=503, detail="Gatekeeper service not loaded")
-    return request.app.state.gatekeeper_service
-
-def get_benchmark_embeddings(request: Request) -> Dict[str, Any]:
-    if not hasattr(request.app.state, "benchmark_embeddings") or not request.app.state.benchmark_embeddings:
-         raise HTTPException(status_code=503, detail="Benchmark embeddings not loaded")
-    return request.app.state.benchmark_embeddings
-
-# --- Pydantic Models ---
 class EvaluationRequest(BaseModel):
     """Request model for evaluation"""
     abstract: str
     title: Optional[str] = None
     keywords: Optional[List[str]] = None
     contribution_category: Optional[int] = None
+
 
 class EvaluationResponse(BaseModel):
     """Response model for evaluation"""
@@ -138,11 +110,6 @@ class EvaluationResponse(BaseModel):
     top_matching_attributes: List[Dict[str, float]]
     confidence: float
 
-class GatekeeperCheckRequest(BaseModel):
-    """Request model for gatekeeper check"""
-    text: str
-    corpus: List[str] = []
-    faculty_id: str = "unknown"
 
 class SimilarityRequest(BaseModel):
     """Request model for similarity check"""
@@ -150,33 +117,33 @@ class SimilarityRequest(BaseModel):
     corpus: List[str]
     threshold: Optional[float] = 0.8
 
+
 class SimilarityResponse(BaseModel):
     """Response model for similarity check"""
     is_duplicate: bool
     max_similarity: float
     similar_indices: List[int]
 
-# --- Endpoints ---
+
 @app.get("/health")
-async def health_check(request: Request):
+async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
         "model": MODEL_NAME,
-        "model_loaded": hasattr(request.app.state, "model") and request.app.state.model is not None,
-        "gatekeeper_loaded": hasattr(request.app.state, "gatekeeper_service") and request.app.state.gatekeeper_service is not None
+        "model_loaded": model is not None
     }
 
+
 @app.post("/evaluate", response_model=EvaluationResponse)
-async def evaluate_contribution(
-    request: EvaluationRequest,
-    model: SentenceTransformer = Depends(get_model),
-    benchmark_embeddings: Dict[str, Any] = Depends(get_benchmark_embeddings)
-):
+async def evaluate_contribution(request: EvaluationRequest):
     """
     Evaluate academic contribution against benchmark attributes
     Returns quality score, novelty score, and detailed breakdown
     """
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
     # Combine title and abstract for evaluation
     text = request.abstract
     if request.title:
@@ -232,14 +199,15 @@ async def evaluate_contribution(
         confidence=round(confidence, 2)
     )
 
+
 @app.post("/similarity", response_model=SimilarityResponse)
-async def check_similarity(
-    request: SimilarityRequest,
-    model: SentenceTransformer = Depends(get_model)
-):
+async def check_similarity(request: SimilarityRequest):
     """
     Check text similarity against a corpus for duplicate detection
     """
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
     if not request.corpus:
         return SimilarityResponse(
             is_duplicate=False,
@@ -268,19 +236,21 @@ async def check_similarity(
         similar_indices=similar_indices
     )
 
+
 @app.post("/embed")
-async def generate_embedding(
-    text: str,
-    model: SentenceTransformer = Depends(get_model)
-):
+async def generate_embedding(text: str):
     """
     Generate embedding for given text
     """
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
     embedding = model.encode([text])[0]
     return {
         "embedding": embedding.tolist(),
         "dimension": len(embedding)
     }
+
 
 @app.get("/benchmarks")
 async def get_benchmarks():
@@ -293,15 +263,6 @@ async def get_benchmarks():
         "total_attributes": sum(len(attrs) for attrs in BENCHMARK_ATTRIBUTES.values())
     }
 
-@app.post("/gatekeeper/check")
-async def gatekeeper_check(
-    request: GatekeeperCheckRequest,
-    gatekeeper_service = Depends(get_gatekeeper)
-):
-    """
-    Run full gatekeeper pipeline: duplicate, AI text, and anomaly detection
-    """
-    return gatekeeper_service.evaluate(request.text, request.corpus, request.faculty_id)
 
 if __name__ == "__main__":
     import uvicorn

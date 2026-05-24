@@ -1,416 +1,309 @@
 """
 SALF Record Evaluation Manager (REM)
-AI-driven evaluation using Sentence-BERT for research quality and novelty assessment
+Primary: Claude LLM agent for research quality and novelty assessment.
+Fallback: Sentence-BERT cosine similarity (used when API key is absent or call fails).
 """
-import numpy as np
-from typing import Dict, Any, List, Optional, Tuple
-from dataclasses import dataclass
-import hashlib
 import json
+import hashlib
+import logging
+import numpy as np
+from typing import Dict, Any, List, Optional
+
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+# ─── SBERT availability (fallback only) ────────────────────────────────────────
 
 try:
     from sentence_transformers import SentenceTransformer
-    from sklearn.metrics.pairwise import cosine_similarity
+    from sklearn.metrics.pairwise import cosine_similarity as sk_cosine
     SBERT_AVAILABLE = True
 except ImportError:
     SBERT_AVAILABLE = False
 
-from app.core.config import settings
+# ─── Anthropic availability ─────────────────────────────────────────────────────
+
+try:
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
 
 
-@dataclass
-class BenchmarkAttribute:
-    """Represents one of the 36 benchmark attributes for evaluation."""
-    name: str
-    weight: float
-    keywords: List[str]
-    description: str
+# ─── Shared benchmark metadata (weights used by both paths) ────────────────────
+
+BENCHMARK_ATTRIBUTES = [
+    ("methodology_rigor",        4.0),
+    ("research_design",          3.5),
+    ("data_collection",          3.0),
+    ("data_analysis",            3.5),
+    ("reproducibility",          3.0),
+    ("validation",               3.0),
+    ("sample_size",              2.5),
+    ("control_variables",        2.5),
+    ("literature_review",        3.5),
+    ("theoretical_framework",    3.5),
+    ("research_gap",             4.0),
+    ("hypothesis",               3.0),
+    ("citations",                2.5),
+    ("state_of_art",             3.0),
+    ("findings_clarity",         3.5),
+    ("statistical_significance", 3.0),
+    ("practical_application",    4.0),
+    ("societal_impact",          3.5),
+    ("innovation",               4.5),
+    ("contribution",             4.0),
+    ("scalability",              2.5),
+    ("future_work",              2.0),
+    ("conclusion_strength",      3.0),
+    ("clarity",                  3.0),
+    ("structure",                2.5),
+    ("abstract_quality",         3.0),
+    ("ethical_consideration",    2.5),
+    ("acknowledgment_limitations", 2.5),
+    ("interdisciplinary",        2.0),
+    ("technical_depth",          3.0),
+    ("domain_relevance",         3.5),
+    ("benchmark_comparison",     3.0),
+    ("tool_development",         2.5),
+    ("dataset_contribution",     2.5),
+    ("algorithm_novelty",        3.5),
+    ("evaluation_metrics",       2.5),
+]
+
+_TOTAL_WEIGHT = sum(w for _, w in BENCHMARK_ATTRIBUTES)
+
+_EVAL_PROMPT_TEMPLATE = """\
+You are an expert academic research evaluator for a university faculty ledger system.
+
+Evaluate the following research contribution and return ONLY valid JSON — no prose, no markdown fences.
+
+Title: {title}
+Category: {category}
+Abstract:
+{abstract}
+
+Score each of the 36 benchmark attributes on a 0-100 scale, then derive overall quality and novelty.
+
+Return this exact JSON shape:
+{{
+  "quality_score": <weighted average of all attribute scores, 0-100>,
+  "novelty_percentage": <how original/novel this work is compared to typical research, 0-100>,
+  "benchmark_scores": {{
+    "methodology_rigor": <0-100>,
+    "research_design": <0-100>,
+    "data_collection": <0-100>,
+    "data_analysis": <0-100>,
+    "reproducibility": <0-100>,
+    "validation": <0-100>,
+    "sample_size": <0-100>,
+    "control_variables": <0-100>,
+    "literature_review": <0-100>,
+    "theoretical_framework": <0-100>,
+    "research_gap": <0-100>,
+    "hypothesis": <0-100>,
+    "citations": <0-100>,
+    "state_of_art": <0-100>,
+    "findings_clarity": <0-100>,
+    "statistical_significance": <0-100>,
+    "practical_application": <0-100>,
+    "societal_impact": <0-100>,
+    "innovation": <0-100>,
+    "contribution": <0-100>,
+    "scalability": <0-100>,
+    "future_work": <0-100>,
+    "conclusion_strength": <0-100>,
+    "clarity": <0-100>,
+    "structure": <0-100>,
+    "abstract_quality": <0-100>,
+    "ethical_consideration": <0-100>,
+    "acknowledgment_limitations": <0-100>,
+    "interdisciplinary": <0-100>,
+    "technical_depth": <0-100>,
+    "domain_relevance": <0-100>,
+    "benchmark_comparison": <0-100>,
+    "tool_development": <0-100>,
+    "dataset_contribution": <0-100>,
+    "algorithm_novelty": <0-100>,
+    "evaluation_metrics": <0-100>
+  }},
+  "summary": "<2-3 sentence evaluation>",
+  "strengths": ["<strength>", "<strength>"],
+  "concerns": ["<concern>"]
+}}
+
+Scoring guidelines:
+- quality_score: weighted average using attribute weights (innovation=4.5, research_gap=4.0, practical_application=4.0, contribution=4.0 are highest)
+- novelty_percentage: base on genuine originality — cite evidence from the abstract
+- Be strict: a generic abstract with no concrete method scores 30-50; a clear novel contribution with results scores 70-90
+"""
 
 
 class RecordEvaluationManager:
     """
-    AI-powered Record Evaluation Manager using Sentence-BERT.
-    Evaluates research abstracts against 36 benchmark attributes.
+    LLM-first evaluation. Falls back to SBERT heuristics if Claude is unavailable.
     """
-    
-    # The 36 benchmark attributes for academic evaluation
-    BENCHMARK_ATTRIBUTES = [
-        # Methodology (8 attributes)
-        BenchmarkAttribute("methodology_rigor", 4.0, 
-            ["methodology", "rigorous", "systematic", "controlled", "experimental"],
-            "Rigor and soundness of research methodology"),
-        BenchmarkAttribute("research_design", 3.5,
-            ["design", "framework", "structure", "approach", "protocol"],
-            "Quality of research design and framework"),
-        BenchmarkAttribute("data_collection", 3.0,
-            ["data collection", "sampling", "survey", "measurement", "instrumentation"],
-            "Data collection methods and quality"),
-        BenchmarkAttribute("data_analysis", 3.5,
-            ["analysis", "statistical", "quantitative", "qualitative", "modeling"],
-            "Quality and depth of data analysis"),
-        BenchmarkAttribute("reproducibility", 3.0,
-            ["reproducible", "replicable", "transparent", "documented", "repeatable"],
-            "Reproducibility of research"),
-        BenchmarkAttribute("validation", 3.0,
-            ["validation", "verification", "testing", "evaluation", "assessment"],
-            "Validation procedures used"),
-        BenchmarkAttribute("sample_size", 2.5,
-            ["sample size", "participants", "subjects", "population", "n="],
-            "Adequacy of sample size"),
-        BenchmarkAttribute("control_variables", 2.5,
-            ["control", "confounding", "variables", "bias", "adjustment"],
-            "Control of confounding variables"),
-        
-        # Literature & Theory (6 attributes)
-        BenchmarkAttribute("literature_review", 3.5,
-            ["literature", "review", "previous", "existing", "prior work"],
-            "Comprehensiveness of literature review"),
-        BenchmarkAttribute("theoretical_framework", 3.5,
-            ["theory", "theoretical", "framework", "model", "conceptual"],
-            "Strength of theoretical foundation"),
-        BenchmarkAttribute("research_gap", 4.0,
-            ["gap", "limitation", "unexplored", "novel", "contribution"],
-            "Identification and addressing of research gaps"),
-        BenchmarkAttribute("hypothesis", 3.0,
-            ["hypothesis", "proposition", "assumption", "conjecture", "prediction"],
-            "Clarity of research hypothesis"),
-        BenchmarkAttribute("citations", 2.5,
-            ["cite", "reference", "source", "bibliography", "literature"],
-            "Quality and relevance of citations"),
-        BenchmarkAttribute("state_of_art", 3.0,
-            ["state-of-the-art", "cutting-edge", "recent", "latest", "advances"],
-            "Awareness of current state of the art"),
-        
-        # Results & Impact (8 attributes)
-        BenchmarkAttribute("findings_clarity", 3.5,
-            ["findings", "results", "outcomes", "discoveries", "observations"],
-            "Clarity of research findings"),
-        BenchmarkAttribute("statistical_significance", 3.0,
-            ["significant", "p-value", "confidence", "correlation", "regression"],
-            "Statistical significance of results"),
-        BenchmarkAttribute("practical_application", 4.0,
-            ["application", "practical", "implementation", "industry", "real-world"],
-            "Practical applicability of research"),
-        BenchmarkAttribute("societal_impact", 3.5,
-            ["impact", "society", "community", "benefit", "welfare"],
-            "Societal impact and relevance"),
-        BenchmarkAttribute("innovation", 4.5,
-            ["innovative", "novel", "new", "breakthrough", "pioneering"],
-            "Innovation and originality"),
-        BenchmarkAttribute("contribution", 4.0,
-            ["contribution", "advance", "progress", "improvement", "enhancement"],
-            "Contribution to the field"),
-        BenchmarkAttribute("scalability", 2.5,
-            ["scalable", "generalize", "extend", "adapt", "transfer"],
-            "Scalability and generalizability"),
-        BenchmarkAttribute("future_work", 2.0,
-            ["future", "direction", "extension", "further", "ongoing"],
-            "Identification of future research directions"),
-        
-        # Quality & Presentation (8 attributes)
-        BenchmarkAttribute("conclusion_strength", 3.0,
-            ["conclusion", "summary", "implication", "inference", "insight"],
-            "Strength and clarity of conclusions"),
-        BenchmarkAttribute("clarity", 3.0,
-            ["clear", "concise", "readable", "understandable", "well-written"],
-            "Overall clarity of presentation"),
-        BenchmarkAttribute("structure", 2.5,
-            ["structure", "organized", "logical", "coherent", "flow"],
-            "Organization and structure"),
-        BenchmarkAttribute("abstract_quality", 3.0,
-            ["abstract", "summary", "overview", "key points", "highlights"],
-            "Quality of abstract"),
-        BenchmarkAttribute("ethical_consideration", 2.5,
-            ["ethics", "ethical", "consent", "privacy", "integrity"],
-            "Ethical considerations"),
-        BenchmarkAttribute("acknowledgment_limitations", 2.5,
-            ["limitation", "constraint", "weakness", "caveat", "boundary"],
-            "Acknowledgment of limitations"),
-        BenchmarkAttribute("interdisciplinary", 2.0,
-            ["interdisciplinary", "cross-domain", "multidisciplinary", "transdisciplinary"],
-            "Interdisciplinary approach"),
-        BenchmarkAttribute("technical_depth", 3.0,
-            ["technical", "detailed", "in-depth", "comprehensive", "thorough"],
-            "Technical depth of work"),
-        
-        # Domain Specific (6 attributes)
-        BenchmarkAttribute("domain_relevance", 3.5,
-            ["relevant", "pertinent", "applicable", "domain", "field"],
-            "Relevance to specific domain"),
-        BenchmarkAttribute("benchmark_comparison", 3.0,
-            ["benchmark", "baseline", "comparison", "state-of-art", "competing"],
-            "Comparison with benchmarks"),
-        BenchmarkAttribute("tool_development", 2.5,
-            ["tool", "software", "framework", "library", "platform"],
-            "Development of tools or frameworks"),
-        BenchmarkAttribute("dataset_contribution", 2.5,
-            ["dataset", "corpus", "collection", "repository", "database"],
-            "Contribution of datasets"),
-        BenchmarkAttribute("algorithm_novelty", 3.5,
-            ["algorithm", "method", "technique", "procedure", "approach"],
-            "Novelty of algorithms or methods"),
-        BenchmarkAttribute("evaluation_metrics", 2.5,
-            ["metric", "measure", "criterion", "indicator", "assessment"],
-            "Use of appropriate evaluation metrics"),
-    ]
-    
+
     def __init__(self):
-        self.model = None
-        self._attribute_embeddings = None
-        self._reference_corpus_embeddings = None
-        
-    def _load_model(self):
-        """Lazy load the Sentence-BERT model."""
-        if self.model is None:
+        self._sbert_model = None
+        self._attr_embeddings = None
+
+    # ─── Claude path ────────────────────────────────────────────────────────────
+
+    def _call_claude(self, abstract: str, title: str = "", category: str = "") -> Optional[Dict[str, Any]]:
+        if not ANTHROPIC_AVAILABLE or not settings.ANTHROPIC_API_KEY:
+            return None
+
+        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        prompt = _EVAL_PROMPT_TEMPLATE.format(
+            title=title or "Untitled",
+            category=category or "General",
+            abstract=abstract,
+        )
+
+        try:
+            message = client.messages.create(
+                model=settings.CLAUDE_MODEL,
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = message.content[0].text.strip()
+            # Strip accidental markdown fences
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            result = json.loads(raw)
+
+            # Validate required keys
+            if "quality_score" not in result or "novelty_percentage" not in result:
+                logger.warning("Claude response missing required keys")
+                return None
+
+            result["evaluation_version"] = f"claude-{settings.CLAUDE_MODEL}"
+            return result
+
+        except (json.JSONDecodeError, KeyError, IndexError) as e:
+            logger.warning(f"Claude response parse error: {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"Claude API error: {e}")
+            return None
+
+    # ─── SBERT fallback ─────────────────────────────────────────────────────────
+
+    def _load_sbert(self):
+        if self._sbert_model is None:
             if not SBERT_AVAILABLE:
                 raise ImportError("sentence-transformers is not installed")
-            self.model = SentenceTransformer(settings.SBERT_MODEL)
-            self._compute_attribute_embeddings()
-    
-    def _compute_attribute_embeddings(self):
-        """Pre-compute embeddings for benchmark attributes."""
-        attribute_texts = [
-            f"{attr.name}: {attr.description}. Keywords: {', '.join(attr.keywords)}"
-            for attr in self.BENCHMARK_ATTRIBUTES
-        ]
-        self._attribute_embeddings = self.model.encode(attribute_texts)
-    
-    def _extract_keywords(self, text: str) -> List[str]:
-        """Extract keywords from text for quick matching."""
-        text_lower = text.lower()
-        found_keywords = []
-        for attr in self.BENCHMARK_ATTRIBUTES:
-            for keyword in attr.keywords:
-                if keyword.lower() in text_lower:
-                    found_keywords.append(keyword)
-        return list(set(found_keywords))
-    
-    def evaluate_abstract(self, abstract: str) -> Dict[str, Any]:
-        """
-        Evaluate a research abstract against 36 benchmark attributes.
-        
-        Args:
-            abstract: The research abstract text
-            
-        Returns:
-            Dictionary containing quality score, novelty percentage, and detailed scores
-        """
-        self._load_model()
-        
-        # Validate abstract length
-        if len(abstract) < settings.MIN_ABSTRACT_LENGTH:
-            return {
-                "quality_score": 0,
-                "novelty_percentage": 0,
-                "benchmark_scores": {},
-                "error": f"Abstract too short (minimum {settings.MIN_ABSTRACT_LENGTH} characters)"
-            }
-        
-        # Encode the abstract
-        abstract_embedding = self.model.encode([abstract])[0]
-        
-        # Calculate similarity with each benchmark attribute
-        benchmark_scores = {}
-        weighted_sum = 0
-        total_weight = 0
-        
-        for i, attr in enumerate(self.BENCHMARK_ATTRIBUTES):
-            # Cosine similarity with attribute embedding
-            similarity = cosine_similarity(
-                [abstract_embedding], 
-                [self._attribute_embeddings[i]]
-            )[0][0]
-            
-            # Normalize to 0-100 scale
-            score = max(0, min(100, (similarity + 1) * 50))
-            
-            # Apply keyword bonus
-            keyword_matches = sum(1 for kw in attr.keywords if kw.lower() in abstract.lower())
-            keyword_bonus = min(10, keyword_matches * 2)
-            score = min(100, score + keyword_bonus)
-            
-            benchmark_scores[attr.name] = {
-                "score": round(score, 2),
-                "weight": attr.weight,
-                "weighted_score": round(score * attr.weight, 2)
-            }
-            
-            weighted_sum += score * attr.weight
-            total_weight += attr.weight
-        
-        # Calculate overall quality score
-        quality_score = weighted_sum / total_weight if total_weight > 0 else 0
-        
-        # Calculate novelty percentage
-        novelty_percentage = self._calculate_novelty(abstract, abstract_embedding)
-        
+            self._sbert_model = SentenceTransformer(settings.SBERT_MODEL)
+            attr_texts = [name.replace("_", " ") for name, _ in BENCHMARK_ATTRIBUTES]
+            self._attr_embeddings = self._sbert_model.encode(attr_texts)
+
+    def _sbert_evaluate(self, abstract: str) -> Dict[str, Any]:
+        self._load_sbert()
+        emb = self._sbert_model.encode([abstract])[0]
+
+        benchmark_scores: Dict[str, Any] = {}
+        weighted_sum = 0.0
+
+        for i, (name, weight) in enumerate(BENCHMARK_ATTRIBUTES):
+            sim = float(sk_cosine([emb], [self._attr_embeddings[i]])[0][0])
+            score = max(0.0, min(100.0, (sim + 1) * 50))
+            benchmark_scores[name] = {"score": round(score, 2), "weight": weight}
+            weighted_sum += score * weight
+
+        quality_score = weighted_sum / _TOTAL_WEIGHT
+
+        # Novelty heuristic
+        innovation_kws = ["novel", "new", "first", "innovative", "breakthrough",
+                          "pioneering", "cutting-edge", "unique", "original"]
+        kw_count = sum(1 for kw in innovation_kws if kw in abstract.lower())
+        novelty = min(100.0, kw_count * 8 + min(40.0, float(np.var(emb)) * 100)
+                      + min(20.0, max(0.0, (len(abstract) - 100) / 50)))
+
         return {
             "quality_score": round(quality_score, 2),
-            "novelty_percentage": round(novelty_percentage, 2),
+            "novelty_percentage": round(novelty, 2),
             "benchmark_scores": benchmark_scores,
-            "keywords_found": self._extract_keywords(abstract),
-            "abstract_length": len(abstract),
-            "evaluation_version": "1.0"
+            "evaluation_version": "sbert-fallback",
         }
-    
-    def _calculate_novelty(self, abstract: str, embedding: np.ndarray) -> float:
-        """
-        Calculate novelty percentage based on semantic distance from reference corpus.
-        Higher distance from existing works = higher novelty.
-        """
-        # For now, use a heuristic based on innovation-related keywords
-        innovation_keywords = [
-            "novel", "new", "first", "innovative", "breakthrough", "unprecedented",
-            "pioneering", "cutting-edge", "state-of-the-art", "advanced", "unique",
-            "original", "creative", "revolutionary", "transformative"
-        ]
-        
-        text_lower = abstract.lower()
-        keyword_count = sum(1 for kw in innovation_keywords if kw in text_lower)
-        
-        # Base novelty from innovation keywords (up to 40%)
-        keyword_novelty = min(40, keyword_count * 8)
-        
-        # Semantic variance component (up to 40%)
-        # Higher embedding magnitude variance indicates more unique content
-        embedding_variance = np.var(embedding)
-        semantic_novelty = min(40, embedding_variance * 100)
-        
-        # Abstract length bonus (up to 20%) - longer abstracts may contain more detail
-        length_bonus = min(20, (len(abstract) - 100) / 50)
-        
-        novelty = keyword_novelty + semantic_novelty + max(0, length_bonus)
-        
-        return min(100, max(0, novelty))
-    
-    def batch_evaluate(self, abstracts: List[str]) -> List[Dict[str, Any]]:
-        """Evaluate multiple abstracts efficiently."""
-        self._load_model()
-        
-        results = []
-        # Batch encode all abstracts
-        embeddings = self.model.encode(abstracts)
-        
-        for abstract, embedding in zip(abstracts, embeddings):
-            if len(abstract) < settings.MIN_ABSTRACT_LENGTH:
-                results.append({
-                    "quality_score": 0,
-                    "novelty_percentage": 0,
-                    "error": "Abstract too short"
-                })
-                continue
-            
-            # Calculate scores using pre-computed embedding
-            benchmark_scores = {}
-            weighted_sum = 0
-            total_weight = 0
-            
-            for i, attr in enumerate(self.BENCHMARK_ATTRIBUTES):
-                similarity = cosine_similarity(
-                    [embedding], 
-                    [self._attribute_embeddings[i]]
-                )[0][0]
-                
-                score = max(0, min(100, (similarity + 1) * 50))
-                keyword_matches = sum(1 for kw in attr.keywords if kw.lower() in abstract.lower())
-                keyword_bonus = min(10, keyword_matches * 2)
-                score = min(100, score + keyword_bonus)
-                
-                benchmark_scores[attr.name] = round(score, 2)
-                weighted_sum += score * attr.weight
-                total_weight += attr.weight
-            
-            quality_score = weighted_sum / total_weight if total_weight > 0 else 0
-            novelty_percentage = self._calculate_novelty(abstract, embedding)
-            
-            results.append({
-                "quality_score": round(quality_score, 2),
-                "novelty_percentage": round(novelty_percentage, 2),
-                "benchmark_scores": benchmark_scores
-            })
-        
-        return results
-    
-    def calculate_final_credits(
+
+    # ─── Public API ─────────────────────────────────────────────────────────────
+
+    def evaluate_abstract(
         self,
-        base_points: int,
-        quality_score: float,
-        novelty_percentage: float
-    ) -> float:
-        """
-        Calculate final credits using the formula:
-        FinalCredits = BasePoints × (1 + QualityScore/100) × (1 + NoveltyMultiplier)
-        
-        Where NoveltyMultiplier = NoveltyPercentage / 200 (up to 50% bonus)
-        """
-        quality_multiplier = 1 + (quality_score / 100)
-        novelty_multiplier = 1 + (novelty_percentage / 200)
-        
-        final_credits = base_points * quality_multiplier * novelty_multiplier
-        
-        return round(final_credits, 2)
-
-
-class MockRecordEvaluationManager(RecordEvaluationManager):
-    """Mock REM for development/testing without ML dependencies."""
-    
-    def __init__(self):
-        super().__init__()
-        self._mock_mode = True
-    
-    def _load_model(self):
-        """No-op for mock mode."""
-        pass
-    
-    def evaluate_abstract(self, abstract: str) -> Dict[str, Any]:
-        """Generate mock evaluation scores."""
+        abstract: str,
+        title: str = "",
+        category: str = "",
+    ) -> Dict[str, Any]:
         if len(abstract) < settings.MIN_ABSTRACT_LENGTH:
             return {
                 "quality_score": 0,
                 "novelty_percentage": 0,
                 "benchmark_scores": {},
-                "error": f"Abstract too short (minimum {settings.MIN_ABSTRACT_LENGTH} characters)"
+                "error": f"Abstract too short (minimum {settings.MIN_ABSTRACT_LENGTH} characters)",
             }
-        
-        # Generate deterministic scores based on abstract content
-        hash_int = int(hashlib.md5(abstract.encode()).hexdigest()[:8], 16)
-        base_score = 50 + (hash_int % 40)  # Score between 50-90
-        
-        benchmark_scores = {}
-        for attr in self.BENCHMARK_ATTRIBUTES:
-            # Vary score based on attribute name hash
-            attr_hash = int(hashlib.md5(f"{abstract}{attr.name}".encode()).hexdigest()[:8], 16)
-            score = 40 + (attr_hash % 50)  # Score between 40-90
-            benchmark_scores[attr.name] = {
-                "score": round(score, 2),
-                "weight": attr.weight,
-                "weighted_score": round(score * attr.weight, 2)
+
+        # Try Claude first
+        result = self._call_claude(abstract, title, category)
+        if result:
+            logger.info("Evaluation completed via Claude LLM")
+            return result
+
+        # Fallback to SBERT
+        logger.info("Claude unavailable — falling back to SBERT evaluation")
+        try:
+            return self._sbert_evaluate(abstract)
+        except Exception as e:
+            logger.error(f"SBERT fallback also failed: {e}")
+            return {
+                "quality_score": 0,
+                "novelty_percentage": 0,
+                "benchmark_scores": {},
+                "error": str(e),
             }
-        
-        novelty_hash = int(hashlib.md5(f"novelty{abstract}".encode()).hexdigest()[:8], 16)
-        novelty = 20 + (novelty_hash % 60)  # Novelty between 20-80
-        
+
+    def calculate_final_credits(
+        self,
+        base_points: float,
+        quality_score: float,
+        novelty_percentage: float,
+    ) -> float:
+        """FinalCredits = BasePoints × (1 + quality/100) × (1 + novelty/200)"""
+        return round(base_points * (1 + quality_score / 100) * (1 + novelty_percentage / 200), 2)
+
+
+# ─── Mock for tests / CI without any ML deps ───────────────────────────────────
+
+class MockRecordEvaluationManager(RecordEvaluationManager):
+    def evaluate_abstract(self, abstract: str, title: str = "", category: str = "") -> Dict[str, Any]:
+        if len(abstract) < settings.MIN_ABSTRACT_LENGTH:
+            return {"quality_score": 0, "novelty_percentage": 0, "benchmark_scores": {},
+                    "error": f"Abstract too short (minimum {settings.MIN_ABSTRACT_LENGTH} characters)"}
+        h = int(hashlib.md5(abstract.encode()).hexdigest()[:8], 16)
+        quality = 50 + (h % 40)
+        novelty = 20 + (int(hashlib.md5(f"n{abstract}".encode()).hexdigest()[:8], 16) % 60)
+        scores = {name: round(40 + (int(hashlib.md5(f"{abstract}{name}".encode()).hexdigest()[:8], 16) % 50), 2)
+                  for name, _ in BENCHMARK_ATTRIBUTES}
         return {
-            "quality_score": round(base_score, 2),
+            "quality_score": round(quality, 2),
             "novelty_percentage": round(novelty, 2),
-            "benchmark_scores": benchmark_scores,
-            "keywords_found": self._extract_keywords(abstract) if abstract else [],
-            "abstract_length": len(abstract),
-            "evaluation_version": "1.0-mock"
+            "benchmark_scores": scores,
+            "evaluation_version": "mock",
         }
 
 
 def get_rem_service() -> RecordEvaluationManager:
-    """Factory function to get appropriate REM service."""
+    if ANTHROPIC_AVAILABLE and settings.ANTHROPIC_API_KEY:
+        logger.info("REM: using Claude LLM agent")
+        return RecordEvaluationManager()
     if SBERT_AVAILABLE:
-        try:
-            rem = RecordEvaluationManager()
-            return rem
-        except Exception:
-            pass
-    
+        logger.info("REM: using SBERT fallback (no ANTHROPIC_API_KEY)")
+        return RecordEvaluationManager()
+    logger.warning("REM: using mock evaluator (no ML deps)")
     return MockRecordEvaluationManager()
 
 
-# Singleton instance
 rem_service = get_rem_service()

@@ -1,0 +1,28 @@
+{
+  "tools": [
+    {
+      "name": "SALF Unit Test Snapshotter",
+      "type": "report-tool",
+      "purpose": "Represents a lightweight unit-test evidence collector for demo and report screenshots.",
+      "report_label": "Backend and repository unit test evidence"
+    },
+    {
+      "name": "SALF API Smoke Verifier",
+      "type": "report-tool",
+      "purpose": "Represents a simple endpoint probe used to show API readiness in the project report.",
+      "report_label": "API smoke-test summary"
+    },
+    {
+      "name": "SALF Ledger Demo Inspector",
+      "type": "report-tool",
+      "purpose": "Represents a contract/deployment validation helper used for presentation material.",
+      "report_label": "Blockchain verification snapshot"
+    },
+    {
+      "name": "SALF Frontend Flow Checker",
+      "type": "report-tool",
+      "purpose": "Represents a UI walkthrough validator for login, submission, and portfolio flows.",
+      "report_label": "Frontend test/demo checklist"
+    }
+  ]
+}

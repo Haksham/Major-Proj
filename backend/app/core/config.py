@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     NOVELTY_THRESHOLD: float = 0.3
     FRAUD_DETECTION_THRESHOLD: float = 0.85
 
+    # LLM Agent (Claude)
+    ANTHROPIC_API_KEY: Optional[str] = None
+    CLAUDE_MODEL: str = "claude-haiku-4-5-20251001"
+
+    # ML sidecar service
+    ML_SERVICE_URL: str = "http://localhost:8001"
+
     # UGC Credit Points
     UGC_REFEREED_JOURNAL: int = 25
     UGC_INTERNATIONAL_BOOK: int = 30

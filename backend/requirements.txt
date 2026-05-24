@@ -54,3 +54,6 @@ httpx>=0.26.0
 python-dotenv>=1.0.0
 aiofiles>=23.2.0
 httptools>=0.6.0
+
+# LLM Agent (Claude)
+anthropic>=0.40.0

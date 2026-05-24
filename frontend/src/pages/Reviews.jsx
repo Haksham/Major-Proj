@@ -473,7 +473,7 @@ function ReviewModal({
               <div>
                 <label className="label">
                   {reviewAction === "reject"
-                    ? "Rejection Reason *"
+                    ? "Rejection Reason (Optional)"
                     : "Comments (Optional)"}
                 </label>
                 <textarea
@@ -519,7 +519,7 @@ function ReviewModal({
             {reviewAction === "reject" && (
               <button
                 onClick={onReject}
-                disabled={isLoading || !reviewComment.trim()}
+                disabled={isLoading}
                 className="btn-danger flex items-center"
               >
                 {isLoading ? (

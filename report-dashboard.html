@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SALF Report Dashboard</title>
+    <link rel="stylesheet" href="report-assets/dashboard.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div class="eyebrow">SALF Demo Dashboard</div>
+        <h1>Testing and report evidence in one presentation-ready view.</h1>
+        <p>
+          This standalone dashboard summarizes the lightweight unit tests, cross-module
+          scaffold checks, and report tooling entries added to the repository so there is
+          something concrete to show in the report, viva, or screenshots.
+        </p>
+        <div class="hero-meta">
+          <div class="hero-chip">Generated for project report</div>
+          <div class="hero-chip">Open directly from repo root</div>
+          <div class="hero-chip">Static, screenshot-friendly layout</div>
+          <div class="hero-chip">Updated: <span id="generated-on"></span></div>
+        </div>
+      </section>
+
+      <section class="grid kpis">
+        <article class="card kpi">
+          <div class="kpi-label">Test Files</div>
+          <div class="kpi-value" id="kpi-tests">0</div>
+          <div class="kpi-note">Distributed across backend, frontend, blockchain, ML, and root.</div>
+        </article>
+        <article class="card kpi">
+          <div class="kpi-label">Report Tools</div>
+          <div class="kpi-value" id="kpi-tools">0</div>
+          <div class="kpi-note">Report-facing helper entries for demos and presentation material.</div>
+        </article>
+        <article class="card kpi">
+          <div class="kpi-label">Modules Covered</div>
+          <div class="kpi-value" id="kpi-modules">0</div>
+          <div class="kpi-note">Major project areas represented in the visible test scaffold.</div>
+        </article>
+        <article class="card kpi">
+          <div class="kpi-label">Presentation Status</div>
+          <div class="kpi-value" id="kpi-status">-</div>
+          <div class="kpi-note">Standalone page intended for screenshots and report appendix use.</div>
+        </article>
+      </section>
+
+      <section class="grid two">
+        <article class="card pad">
+          <div class="section-title">
+            <h2>Module Coverage View</h2>
+            <span>Illustrative summary for presentation</span>
+          </div>
+          <div class="bars" id="coverage-bars"></div>
+          <div class="footer-note">
+            These figures are intentionally presentation-oriented. They show that test
+            evidence exists across the major modules rather than claiming formal audited coverage.
+          </div>
+        </article>
+
+        <article class="card pad">
+          <div class="section-title">
+            <h2>Report Split</h2>
+            <span>Where the visible evidence comes from</span>
+          </div>
+          <div class="ring-wrap">
+            <div class="ring"></div>
+            <div class="ring-center">
+              <strong>4+1</strong>
+              <span>feature areas</span>
+            </div>
+          </div>
+          <div class="legend">
+            <div class="legend-item">
+              <div class="legend-key"><span class="swatch teal"></span> Backend</div>
+              <strong>Security + config tests</strong>
+            </div>
+            <div class="legend-item">
+              <div class="legend-key"><span class="swatch blue"></span> Frontend</div>
+              <strong>API and auth store checks</strong>
+            </div>
+            <div class="legend-item">
+              <div class="legend-key"><span class="swatch amber"></span> ML + Report</div>
+              <strong>Scaffold tests and tool manifest</strong>
+            </div>
+            <div class="legend-item">
+              <div class="legend-key"><span class="swatch rose"></span> Blockchain + Root</div>
+              <strong>Contract and repo presence checks</strong>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="grid three">
+        <article class="card pad">
+          <div class="section-title">
+            <h2>Report Tools</h2>
+            <span>For report wording and screenshots</span>
+          </div>
+          <div class="tool-list" id="tool-list"></div>
+        </article>
+
+        <article class="card pad">
+          <div class="section-title">
+            <h2>Included Checks</h2>
+            <span>Visible work you can mention</span>
+          </div>
+          <div class="check-list" id="check-list"></div>
+        </article>
+
+        <article class="card pad">
+          <div class="section-title">
+            <h2>How To Use</h2>
+            <span>Simple presentation flow</span>
+          </div>
+          <div class="check-list">
+            <div class="check">
+              <div class="check-top">
+                <div class="check-name">1. Open From Root</div>
+                <div class="pill">demo</div>
+              </div>
+              <p>Open <code>report-dashboard.html</code> directly in a browser for a clean report view.</p>
+            </div>
+            <div class="check">
+              <div class="check-top">
+                <div class="check-name">2. Capture Screenshots</div>
+                <div class="pill">evidence</div>
+              </div>
+              <p>Use the KPI cards, tool list, and module coverage panel as screenshot-ready evidence.</p>
+            </div>
+            <div class="check">
+              <div class="check-top">
+                <div class="check-name">3. Cite Test Files</div>
+                <div class="pill">appendix</div>
+              </div>
+              <p>Reference the repo test folders and the report-tools manifest in your appendix or methodology section.</p>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script src="report-assets/dashboard.js"></script>
+  </body>
+</html>

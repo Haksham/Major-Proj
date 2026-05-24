@@ -69,13 +69,20 @@ def _to_response(c: ContributionORM) -> ContributionResponse:
 
 
 async def _run_ai_evaluation(contribution_id: int) -> None:
-    """Background task: run REM evaluation and persist results to DB."""
+    """Background task: Claude LLM evaluation + gatekeeper fraud check."""
+    import httpx
     async with AsyncSessionLocal() as session:
         c = await session.get(ContributionORM, contribution_id)
         if not c:
             return
+
+        # ── 1. LLM quality / novelty evaluation ──────────────────────────────
         try:
-            evaluation = rem_service.evaluate_abstract(c.abstract or "")
+            evaluation = rem_service.evaluate_abstract(
+                c.abstract or "",
+                title=c.title or "",
+                category=c.category.value if c.category else "",
+            )
             quality_score = float(evaluation.get("quality_score") or 0)
             novelty_percentage = float(evaluation.get("novelty_percentage") or 0)
             base_credits = c.base_credits or 0
@@ -86,14 +93,43 @@ async def _run_ai_evaluation(contribution_id: int) -> None:
             c.calculated_credits = calculated
             c.evaluation_details = json.dumps({
                 "benchmark_scores": evaluation.get("benchmark_scores", {}),
-                "keywords_found": evaluation.get("keywords_found", []),
-                "abstract_length": evaluation.get("abstract_length"),
+                "summary": evaluation.get("summary", ""),
+                "strengths": evaluation.get("strengths", []),
+                "concerns": evaluation.get("concerns", []),
                 "evaluation_version": evaluation.get("evaluation_version"),
             })
-            await session.commit()
         except Exception as e:
             c.evaluation_details = json.dumps({"error": str(e)})
-            await session.commit()
+
+        # ── 2. Gatekeeper fraud / duplicate check (ml sidecar) ───────────────
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    f"{settings.ML_SERVICE_URL}/gatekeeper/check",
+                    json={
+                        "text": c.abstract or "",
+                        "corpus": [],          # TODO: pass existing abstracts for duplicate check
+                        "faculty_id": str(c.faculty_id),
+                    },
+                )
+                if resp.status_code == 200:
+                    gk = resp.json()
+                    c.fraud_score = float(gk.get("anomaly_score", 0))
+                    if not gk.get("is_authentic", True):
+                        c.is_flagged = True
+                        flags = []
+                        if gk.get("is_duplicate"):
+                            flags.append(f"Duplicate detected (score {gk.get('duplicate_score', 0):.2f})")
+                        if gk.get("is_ai_generated"):
+                            flags.append(f"Possible AI-generated text (prob {gk.get('ai_probability', 0):.2f})")
+                        if gk.get("is_anomalous"):
+                            flags.append(f"Submission anomaly detected (score {gk.get('anomaly_score', 0):.2f})")
+                        c.flag_reason = "; ".join(flags)
+        except Exception as e:
+            # Gatekeeper is optional — log but don't fail the submission
+            print(f"Gatekeeper check skipped: {e}")
+
+        await session.commit()
 
 
 @router.get("/ipfs/{cid}")
@@ -448,7 +484,11 @@ async def get_evaluation_details(
         novelty_percentage = c.novelty_percentage or 0.0
         benchmark_scores = cached.get("benchmark_scores", {})
     else:
-        evaluation = rem_service.evaluate_abstract(c.abstract or "")
+        evaluation = rem_service.evaluate_abstract(
+            c.abstract or "",
+            title=c.title or "",
+            category=c.category.value if c.category else "",
+        )
         quality_score = float(evaluation.get("quality_score") or 0)
         novelty_percentage = float(evaluation.get("novelty_percentage") or 0)
         benchmark_scores = evaluation.get("benchmark_scores", {})
@@ -456,8 +496,9 @@ async def get_evaluation_details(
         c.novelty_percentage = novelty_percentage
         c.evaluation_details = json.dumps({
             "benchmark_scores": benchmark_scores,
-            "keywords_found": evaluation.get("keywords_found", []),
-            "abstract_length": evaluation.get("abstract_length"),
+            "summary": evaluation.get("summary", ""),
+            "strengths": evaluation.get("strengths", []),
+            "concerns": evaluation.get("concerns", []),
             "evaluation_version": evaluation.get("evaluation_version"),
         })
         await db.commit()
