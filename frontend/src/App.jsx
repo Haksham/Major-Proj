@@ -15,6 +15,8 @@ import Reviews from "./pages/Reviews";
 import HodFacultyView from "./pages/HodFacultyView";
 import AdminPanel from "./pages/AdminPanel";
 import InstituteAdminPanel from "./pages/InstituteAdminPanel";
+import Profile from "./pages/Profile";
+import PublicPortfolio from "./pages/PublicPortfolio";
 import NotFound from "./pages/NotFound";
 
 // Protected Route Component
@@ -66,6 +68,7 @@ function App() {
     <Routes>
       {/* Public Routes */}
       <Route path="/login" element={<Login />} />
+      <Route path="/public/portfolio/:walletAddress" element={<PublicPortfolio />} />
 
       {/* Protected Routes */}
       <Route
@@ -81,6 +84,14 @@ function App() {
         <Route path="contributions" element={<Contributions />} />
         <Route path="contributions/new" element={<SubmitContribution />} />
         <Route path="portfolio" element={<Portfolio />} />
+        <Route
+          path="profile"
+          element={
+            <ProtectedRoute allowedRoles={["faculty", "hod"]}>
+              <Profile />
+            </ProtectedRoute>
+          }
+        />
 
         {/* HoD Routes */}
         <Route

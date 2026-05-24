@@ -120,4 +120,9 @@ export const instituteAdminAPI = {
   createDepartment: (data) => api.post("/institute-admin/departments", data),
 };
 
+export const profileAPI = {
+  getProfile: () => api.get("/profile/me"),
+  updateProfile: (data) => api.patch("/profile/me", data),
+};
+
 export default api;

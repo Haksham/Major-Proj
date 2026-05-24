@@ -4,6 +4,8 @@ FROM python:3.11-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
     MODEL_NAME=all-MiniLM-L6-v2 \
     DEVICE=cpu
 
@@ -16,19 +18,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir \
-    torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu \
-    sentence-transformers==2.2.2 \
-    fastapi==0.109.0 \
-    uvicorn==0.27.0 \
-    numpy==1.26.3 \
-    scikit-learn==1.4.0
-
-# Download model during build
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${MODEL_NAME}')"
+    torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY ml_service.py .
+COPY . .
 
 # Create non-root user
 RUN adduser --disabled-password --gecos '' appuser && \

@@ -20,7 +20,7 @@ class _DeptCreate(BaseModel):
     hod_wallet_address: _Opt[str] = Field(None, pattern=r"^0x[a-fA-F0-9]{40}$")
 from app.core.security import get_current_user, require_institute_admin
 from app.core.database import get_db
-from app.models.database import User, Department, Institution, UserRole as DBUserRole, Designation as DBDesignation
+from app.models.database import User, Department, Institution, Contribution, UserRole as DBUserRole, Designation as DBDesignation
 
 router = APIRouter(prefix="/institute-admin", tags=["Institute Administration"])
 
@@ -265,7 +265,7 @@ async def get_institution_stats(
             User.role == DBUserRole.FACULTY,
             User.is_active == True,
         )
-    )).scalar()
+    )).scalar() or 0
 
     total_hod = (await db.execute(
         select(func.count(User.id)).where(
@@ -273,7 +273,7 @@ async def get_institution_stats(
             User.role == DBUserRole.HOD,
             User.is_active == True,
         )
-    )).scalar()
+    )).scalar() or 0
 
     pending_count = (await db.execute(
         select(func.count(User.id)).where(
@@ -281,18 +281,32 @@ async def get_institution_stats(
             User.is_active == False,
             User.role.in_([DBUserRole.FACULTY, DBUserRole.HOD]),
         )
-    )).scalar()
+    )).scalar() or 0
 
     dept_count = (await db.execute(
         select(func.count(Department.id)).where(Department.institution_id == institution_id)
-    )).scalar()
+    )).scalar() or 0
+
+    # Count contributions from faculty in this institution
+    faculty_ids_result = await db.execute(
+        select(User.id).where(User.institution_id == institution_id)
+    )
+    faculty_ids = [row[0] for row in faculty_ids_result.fetchall()]
+    contrib_count = 0
+    if faculty_ids:
+        contrib_count = (await db.execute(
+            select(func.count(Contribution.id)).where(Contribution.faculty_id.in_(faculty_ids))
+        )).scalar() or 0
 
     inst = await db.get(Institution, institution_id)
 
     return {
-        "institution": inst.name if inst else None,
-        "total_faculty": total_faculty,
-        "total_hod": total_hod,
-        "pending_approvals": pending_count,
-        "total_departments": dept_count,
+        "institution": {"name": inst.name if inst else None, "id": institution_id},
+        "users": {
+            "total": total_faculty + total_hod,
+            "pending": pending_count,
+            "by_role": {"faculty": total_faculty, "hod": total_hod},
+        },
+        "departments": {"total": dept_count},
+        "contributions": {"total": contrib_count},
     }

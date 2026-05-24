@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store";
 import { web3Service } from "../services/web3";
 import { authAPI, institutesAPI } from "../services/api";
-import { BuildingLibraryIcon, UserGroupIcon, ShieldCheckIcon as AdminIcon } from "@heroicons/react/24/outline";
+import { BuildingLibraryIcon, UserGroupIcon } from "@heroicons/react/24/outline";
 import {
   CubeIcon,
   ShieldCheckIcon,
@@ -45,7 +45,6 @@ function Login() {
     setPendingApproval,
   } = useAuthStore();
   const [step, setStep] = useState(1);
-  const [roleHint, setRoleHint] = useState("");
   // regMode: null | "choice" | "faculty" | "institute"
   const [regMode, setRegMode] = useState(null);
 
@@ -107,32 +106,6 @@ function Login() {
               <div className="flex items-center space-x-2 text-sm text-gray-600">
                 <AcademicCapIcon className="h-5 w-5 text-blue-500" />
                 <span>UGC Compliant</span>
-              </div>
-            </div>
-
-            {/* Role type selector */}
-            <div>
-              <p className="text-sm font-medium text-gray-700 mb-2">I am a...</p>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { key: "master_admin", label: "Master Admin", icon: AdminIcon },
-                  { key: "institute_admin", label: "Institute Admin", icon: BuildingLibraryIcon },
-                  { key: "faculty", label: "Faculty / HoD", icon: UserGroupIcon },
-                ].map(({ key, label, icon: Icon }) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setRoleHint(key)}
-                    className={`flex flex-col items-center p-3 rounded-lg border-2 text-xs font-medium transition-all ${
-                      roleHint === key
-                        ? "border-primary-500 bg-primary-50 text-primary-700"
-                        : "border-gray-200 text-gray-500 hover:border-gray-300"
-                    }`}
-                  >
-                    <Icon className="h-5 w-5 mb-1" />
-                    {label}
-                  </button>
-                ))}
               </div>
             </div>
 
@@ -262,7 +235,6 @@ function Login() {
 
       {regMode === "choice" && walletAddress && (
         <RegistrationChoiceModal
-          roleHint={roleHint}
           onFaculty={() => setRegMode("faculty")}
           onInstitute={() => setRegMode("institute")}
           onClose={() => { setRegMode(null); setNeedsRegistration(false); setStep(2); }}
@@ -514,7 +486,7 @@ function RegistrationModal({ walletAddress, onClose }) {
   );
 }
 
-function RegistrationChoiceModal({ roleHint, onFaculty, onInstitute, onClose }) {
+function RegistrationChoiceModal({ onFaculty, onInstitute, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
       <div className="fixed inset-0 bg-gray-900 bg-opacity-75" onClick={onClose} />
@@ -524,9 +496,7 @@ function RegistrationChoiceModal({ roleHint, onFaculty, onInstitute, onClose }) 
         <div className="space-y-3">
           <button
             onClick={onInstitute}
-            className={`w-full flex items-center p-4 rounded-xl border-2 text-left transition-all hover:border-primary-400 ${
-              roleHint === "institute_admin" ? "border-primary-500 bg-primary-50" : "border-gray-200"
-            }`}
+            className="w-full flex items-center p-4 rounded-xl border-2 border-gray-200 text-left transition-all hover:border-primary-400"
           >
             <BuildingLibraryIcon className="h-8 w-8 text-primary-600 mr-4 shrink-0" />
             <div>
@@ -536,9 +506,7 @@ function RegistrationChoiceModal({ roleHint, onFaculty, onInstitute, onClose }) 
           </button>
           <button
             onClick={onFaculty}
-            className={`w-full flex items-center p-4 rounded-xl border-2 text-left transition-all hover:border-primary-400 ${
-              roleHint === "faculty" ? "border-primary-500 bg-primary-50" : "border-gray-200"
-            }`}
+            className="w-full flex items-center p-4 rounded-xl border-2 border-gray-200 text-left transition-all hover:border-primary-400"
           >
             <UserGroupIcon className="h-8 w-8 text-green-600 mr-4 shrink-0" />
             <div>

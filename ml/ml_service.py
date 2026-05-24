@@ -5,12 +5,15 @@ Provides NLP evaluation capabilities for academic contributions
 
 import os
 import logging
+import time
 import numpy as np
 from contextlib import asynccontextmanager
 from typing import List, Dict, Optional, Any
 
 from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi.responses import Response
 from pydantic import BaseModel
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -67,6 +70,29 @@ CATEGORY_WEIGHTS = {
     "innovation": 0.15,
 }
 
+REQUEST_COUNT = Counter(
+    "salf_ml_http_requests_total",
+    "Total ML service HTTP requests.",
+    ["method", "path", "status"],
+)
+
+REQUEST_LATENCY = Histogram(
+    "salf_ml_http_request_duration_seconds",
+    "ML service HTTP request latency in seconds.",
+    ["method", "path"],
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
+)
+
+IN_PROGRESS = Gauge(
+    "salf_ml_http_requests_in_progress",
+    "ML service HTTP requests currently being processed.",
+)
+
+MODEL_LOAD_FAILURES = Counter(
+    "salf_ml_model_load_failures_total",
+    "ML model initialization failures.",
+)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
@@ -87,6 +113,7 @@ async def lifespan(app: FastAPI):
         app.state.benchmark_embeddings = benchmark_embeddings
         logger.info("Benchmark embeddings computed")
     except Exception as e:
+        MODEL_LOAD_FAILURES.inc()
         logger.error(f"Failed to initialize services: {e}")
         raise e
         
@@ -105,6 +132,23 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+
+@app.middleware("http")
+async def prometheus_middleware(request: Request, call_next):
+    start_time = time.time()
+    IN_PROGRESS.inc()
+    try:
+        response = await call_next(request)
+    finally:
+        IN_PROGRESS.dec()
+
+    path = request.url.path
+    duration = time.time() - start_time
+    REQUEST_COUNT.labels(request.method, path, response.status_code).inc()
+    REQUEST_LATENCY.labels(request.method, path).observe(duration)
+    response.headers["X-Process-Time"] = str(duration)
+    return response
 
 # --- Dependencies ---
 def get_model(request: Request) -> SentenceTransformer:
@@ -166,6 +210,11 @@ async def health_check(request: Request):
         "model_loaded": hasattr(request.app.state, "model") and request.app.state.model is not None,
         "gatekeeper_loaded": hasattr(request.app.state, "gatekeeper_service") and request.app.state.gatekeeper_service is not None
     }
+
+
+@app.get("/prometheus")
+async def prometheus_metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 @app.post("/evaluate", response_model=EvaluationResponse)
 async def evaluate_contribution(

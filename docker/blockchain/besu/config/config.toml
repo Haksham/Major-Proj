@@ -4,5 +4,5 @@ rpc-http-enabled=true
 rpc-http-host="0.0.0.0"
 rpc-http-port=8545
 rpc-http-api=["ETH","NET","WEB3","DEBUG"]
-host-whitelist=["*"]
+host-allowlist=["*"]
 p2p-port=30303

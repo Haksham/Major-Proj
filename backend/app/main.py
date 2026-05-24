@@ -2,14 +2,22 @@
 SALF FastAPI Main Application
 Secure Academic Ledger Framework
 """
+import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
-import time
 
 from app.core.config import settings
-from app.api import auth, contributions, portfolio, admin, institutes, institute_admin
+from app.core.monitoring import (
+    EXCEPTION_COUNT,
+    IN_PROGRESS,
+    REQUEST_COUNT,
+    REQUEST_LATENCY,
+    SLOW_REQUESTS,
+    metrics_response,
+)
+from app.api import auth, contributions, portfolio, admin, institutes, institute_admin, profile
 
 
 async def _init_db():
@@ -117,16 +125,26 @@ app.add_middleware(
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start_time = time.time()
-    response = await call_next(request)
+    IN_PROGRESS.inc()
+    try:
+        response = await call_next(request)
+    finally:
+        IN_PROGRESS.dec()
+
     process_time = time.time() - start_time
+    path = request.url.path
     response.headers["X-Process-Time"] = str(process_time)
+    REQUEST_COUNT.labels(request.method, path, response.status_code).inc()
+    REQUEST_LATENCY.labels(request.method, path).observe(process_time)
     if process_time > settings.P95_LATENCY_MS / 1000:
-        print(f"⚠️ Slow request: {request.url.path} took {process_time:.3f}s")
+        SLOW_REQUESTS.labels(path).inc()
+        print(f"⚠️ Slow request: {path} took {process_time:.3f}s")
     return response
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    EXCEPTION_COUNT.labels(type(exc).__name__).inc()
     return JSONResponse(
         status_code=500,
         content={
@@ -143,6 +161,7 @@ app.include_router(contributions.router, prefix=settings.API_V1_PREFIX)
 app.include_router(portfolio.router, prefix=settings.API_V1_PREFIX)
 app.include_router(admin.router, prefix=settings.API_V1_PREFIX)
 app.include_router(institute_admin.router, prefix=settings.API_V1_PREFIX)
+app.include_router(profile.router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/", tags=["Health"])
@@ -186,6 +205,11 @@ async def metrics():
         "blockchain_connected": True,
         "ipfs_connected": True,
     }
+
+
+@app.get("/prometheus", tags=["Observability"])
+async def prometheus_metrics():
+    return metrics_response()
 
 
 if __name__ == "__main__":

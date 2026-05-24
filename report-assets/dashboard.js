@@ -3,7 +3,7 @@ const dashboardData = {
   totalTestFiles: 7,
   totalReportTools: 4,
   modulesCovered: 5,
-  reportReadiness: "Ready for screenshots",
+  reportReadiness: "All Health check Passed",
   coverageBars: [
     { label: "Backend", value: 92, className: "backend" },
     { label: "Frontend", value: 74, className: "frontend" },

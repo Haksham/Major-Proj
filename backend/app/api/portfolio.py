@@ -131,6 +131,54 @@ async def get_portfolio_detail(
     )
 
 
+@router.get("/public/{wallet_address}")
+async def get_public_portfolio(
+    wallet_address: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public portfolio — no auth required. Returns full faculty profile + all contributions."""
+    import json as _json
+    from app.models.database import FacultyProfile
+
+    addr = wallet_address.lower()
+    user_row = (await db.execute(select(User).where(User.wallet_address == addr))).scalar_one_or_none()
+    if not user_row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Faculty not found.")
+
+    p = await _portfolio_for_address(addr, db)
+    all_contribs = sorted(p["contributions"], key=lambda c: c.submission_time or datetime.min, reverse=True)
+
+    profile = (await db.execute(
+        select(FacultyProfile).where(FacultyProfile.user_id == user_row.id)
+    )).scalar_one_or_none()
+
+    return {
+        "faculty": {
+            "name": user_row.name,
+            "email": user_row.email,
+            "employee_id": user_row.employee_id,
+            "designation": user_row.designation.value if user_row.designation else None,
+            "role": user_row.role.value,
+            "wallet_address": addr,
+            "years_experience": profile.years_experience if profile else None,
+            "bio": profile.bio if profile else None,
+        },
+        "stats": {
+            "total_credits": p["total_credits"],
+            "total_contributions": p["total_contributions"],
+            "validated_count": p["validated_count"],
+            "pending_count": p["pending_count"],
+            "rejected_count": p["rejected_count"],
+            "flagged_count": p["flagged_count"],
+            "credits_by_category": p["credits_by_category"],
+        },
+        "contributions": [_to_response(c) for c in all_contribs],
+        "lectures": _json.loads(profile.lectures_json or "[]") if profile else [],
+        "projects": _json.loads(profile.projects_json or "[]") if profile else [],
+        "courses": _json.loads(profile.courses_json or "[]") if profile else [],
+    }
+
+
 @router.get("/faculty/{wallet_address}", response_model=PortfolioSummary)
 async def get_faculty_portfolio(
     wallet_address: str,

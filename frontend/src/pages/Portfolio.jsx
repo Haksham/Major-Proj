@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   useAuthStore,
   usePortfolioStore,
@@ -12,6 +12,7 @@ import {
   TrophyIcon,
   CubeIcon,
   LinkIcon,
+  ClipboardDocumentCheckIcon,
 } from "@heroicons/react/24/outline";
 import {
   BarChart,
@@ -51,6 +52,9 @@ function Portfolio() {
   const { portfolio, fetchPortfolio, isLoading } = usePortfolioStore();
   const { contributions, fetchContributions } = useContributionStore();
   const [activeTab, setActiveTab] = useState("overview");
+  const [copied, setCopied] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const overviewRef = useRef(null);
 
   useEffect(() => {
     fetchPortfolio();
@@ -95,6 +99,50 @@ function Portfolio() {
     { subject: "Publication", A: 90 },
   ];
 
+  const handleShare = () => {
+    const url = `${window.location.origin}/public/portfolio/${walletAddress}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
+  };
+
+  const handleExportPDF = async () => {
+    const target = overviewRef.current;
+    if (!target) return;
+    setIsExporting(true);
+    try {
+      const { default: jsPDF } = await import("jspdf");
+      const { default: html2canvas } = await import("html2canvas");
+
+      const canvas = await html2canvas(target, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+      });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgH = (canvas.height * pageW) / canvas.width;
+      let left = imgH;
+      let pos = 0;
+      pdf.addImage(imgData, "PNG", 0, pos, pageW, imgH);
+      left -= pageH;
+      while (left > 0) {
+        pos -= pageH;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, pos, pageW, imgH);
+        left -= pageH;
+      }
+      pdf.save(`${(user?.name || "Portfolio").replace(/\s+/g, "_")}_Portfolio.pdf`);
+    } catch (e) {
+      console.error("PDF export failed:", e);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   // Top contributions
   const topContributions = [...contributions]
     .sort((a, b) => (b.final_credits || 0) - (a.final_credits || 0))
@@ -127,13 +175,16 @@ function Portfolio() {
           </div>
         </div>
         <div className="mt-4 lg:mt-0 flex space-x-3">
-          <button className="btn-secondary inline-flex items-center">
-            <LinkIcon className="h-4 w-4 mr-2" />
-            Share Portfolio
+          <button onClick={handleShare} className="btn-secondary inline-flex items-center">
+            {copied ? (
+              <><ClipboardDocumentCheckIcon className="h-4 w-4 mr-2 text-green-500" />Copied!</>
+            ) : (
+              <><LinkIcon className="h-4 w-4 mr-2" />Share Portfolio</>
+            )}
           </button>
-          <button className="btn-primary inline-flex items-center">
+          <button onClick={handleExportPDF} disabled={isExporting} className="btn-primary inline-flex items-center disabled:opacity-60">
             <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
-            Export PDF
+            {isExporting ? "Exporting..." : "Export PDF"}
           </button>
         </div>
       </div>
@@ -165,7 +216,7 @@ function Portfolio() {
 
       {/* Overview Tab */}
       {activeTab === "overview" && (
-        <div className="space-y-6">
+        <div ref={overviewRef} className="space-y-6">
           {/* Stats cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="card bg-gradient-to-br from-primary-500 to-primary-600 text-white">

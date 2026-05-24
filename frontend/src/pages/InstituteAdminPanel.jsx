@@ -80,10 +80,10 @@ function IAOverview() {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Institution" value={stats?.institution ?? "—"} icon={BuildingOfficeIcon} color="indigo" text />
-        <StatCard title="Faculty" value={stats?.total_faculty ?? 0} icon={UsersIcon} color="blue" />
-        <StatCard title="HoDs" value={stats?.total_hod ?? 0} icon={UsersIcon} color="purple" />
-        <StatCard title="Pending Approvals" value={stats?.pending_approvals ?? 0} icon={ShieldCheckIcon} color="yellow" />
+        <StatCard title="Institution" value={stats?.institution?.name ?? "—"} icon={BuildingOfficeIcon} color="indigo" text />
+        <StatCard title="Faculty" value={stats?.users?.by_role?.faculty ?? 0} icon={UsersIcon} color="blue" />
+        <StatCard title="HoDs" value={stats?.users?.by_role?.hod ?? 0} icon={UsersIcon} color="purple" />
+        <StatCard title="Pending Approvals" value={stats?.users?.pending ?? 0} icon={ShieldCheckIcon} color="yellow" />
       </div>
 
       <div className="card">

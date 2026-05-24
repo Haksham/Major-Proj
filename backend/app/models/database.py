@@ -187,6 +187,22 @@ class AuditLog(Base):
     blockchain_tx_hash = Column(String(100))
 
 
+class FacultyProfile(Base):
+    """Extended profile metadata for faculty and HoD members."""
+    __tablename__ = "faculty_profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    years_experience = Column(Integer, nullable=True)
+    bio = Column(Text, nullable=True)
+    lectures_json = Column(Text, default="[]")    # JSON: [{subject, year, semester, details}]
+    projects_json = Column(Text, default="[]")    # JSON: [{title, description, funding_source, funding_amount, status, year_start, year_end}]
+    courses_json = Column(Text, default="[]")     # JSON: [{name, year, semester, students_count}]
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", backref="profile")
+
+
 class BenchmarkAttribute(Base):
     __tablename__ = "benchmark_attributes"
 

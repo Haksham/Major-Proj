@@ -46,6 +46,12 @@ const navigation = [
     roles: ["faculty", "hod"],
   },
   {
+    name: "My Profile",
+    href: "/profile",
+    icon: UserCircleIcon,
+    roles: ["faculty", "hod"],
+  },
+  {
     name: "Review Queue",
     href: "/reviews",
     icon: ClipboardDocumentCheckIcon,
@@ -233,13 +239,22 @@ function DashboardLayout() {
                       </p>
                     </div>
                     {(user?.role === "faculty" || user?.role === "hod") && (
-                      <Link
-                        to="/portfolio"
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                        onClick={() => setUserMenuOpen(false)}
-                      >
-                        My Portfolio
-                      </Link>
+                      <>
+                        <Link
+                          to="/profile"
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          onClick={() => setUserMenuOpen(false)}
+                        >
+                          My Profile
+                        </Link>
+                        <Link
+                          to="/portfolio"
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          onClick={() => setUserMenuOpen(false)}
+                        >
+                          My Portfolio
+                        </Link>
+                      </>
                     )}
                     <button
                       onClick={handleLogout}
