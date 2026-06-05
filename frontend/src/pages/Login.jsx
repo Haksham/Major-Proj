@@ -69,7 +69,7 @@ function Login() {
       setStep(3);
       const nonceResp = await fetch("/api/v1/auth/nonce", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
         body: JSON.stringify({ wallet_address: walletAddress }),
       });
       if (!nonceResp.ok) throw new Error("Failed to fetch nonce");

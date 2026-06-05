@@ -2,6 +2,12 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { logBlockchainConsoleEvent } from "../utils/blockchainConsole";
 
+const apiFetch = (url, options = {}) =>
+  fetch(url, {
+    ...options,
+    headers: { "ngrok-skip-browser-warning": "true", ...(options.headers || {}) },
+  });
+
 /**
  * Authentication Store using Zustand
  * Manages user authentication state, wallet connection, and JWT tokens
@@ -74,7 +80,7 @@ export const useAuthStore = create(
         set({ isLoading: true, error: null });
 
         try {
-          const response = await fetch("/api/v1/auth/login", {
+          const response = await apiFetch("/api/v1/auth/login", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -128,7 +134,7 @@ export const useAuthStore = create(
         if (!token) return null;
 
         try {
-          const response = await fetch("/api/v1/auth/me", {
+          const response = await apiFetch("/api/v1/auth/me", {
             headers: {
               Authorization: `Bearer ${token}`,
             },
@@ -202,7 +208,7 @@ export const useContributionStore = create((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const response = await fetch("/api/v1/contributions/", {
+      const response = await apiFetch("/api/v1/contributions/", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -230,7 +236,7 @@ export const useContributionStore = create((set, get) => ({
       const isFormData =
         typeof FormData !== "undefined" && contributionData instanceof FormData;
 
-      const response = await fetch("/api/v1/contributions/submit", {
+      const response = await apiFetch("/api/v1/contributions/submit", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -275,7 +281,7 @@ export const useContributionStore = create((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/v1/contributions/${contributionId}/review`,
         {
           method: "POST",
@@ -322,7 +328,7 @@ export const useContributionStore = create((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const response = await fetch("/api/v1/contributions/pending/review", {
+      const response = await apiFetch("/api/v1/contributions/pending/review", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -372,7 +378,7 @@ export const usePortfolioStore = create((set) => ({
         ? `/api/v1/portfolio/${facultyId}`
         : "/api/v1/portfolio/me";
 
-      const response = await fetch(url, {
+      const response = await apiFetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -403,7 +409,7 @@ export const usePortfolioStore = create((set) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const response = await fetch("/api/v1/portfolio/statistics", {
+      const response = await apiFetch("/api/v1/portfolio/statistics", {
         headers: {
           Authorization: `Bearer ${token}`,
         },

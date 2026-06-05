@@ -85,12 +85,13 @@ class BlockchainService:
             "from": sender,
             "nonce": nonce,
             "gas": 500000,
-            "gasPrice": 0,  # Private network with zero gas
+            "gasPrice": self.w3.to_wei("1", "gwei"),
             "chainId": settings.BESU_CHAIN_ID
         })
         
         signed_tx = self.w3.eth.account.sign_transaction(tx, settings.BESU_PRIVATE_KEY)
-        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        raw = signed_tx.raw_transaction if hasattr(signed_tx, "raw_transaction") else signed_tx.rawTransaction
+        tx_hash = self.w3.eth.send_raw_transaction(raw)
         receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
 
         mined = receipt.transactionHash.hex()

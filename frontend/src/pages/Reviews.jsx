@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useContributionStore, useAuthStore } from "../store";
+import { useNavigate } from "react-router-dom";
 import {
   ClipboardDocumentCheckIcon,
   CheckCircleIcon,
@@ -8,8 +9,35 @@ import {
   DocumentMagnifyingGlassIcon,
   FunnelIcon,
   CubeIcon,
+  ArrowTopRightOnSquareIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
+
+function TxToast({ txHash, action, onClose }) {
+  const navigate = useNavigate();
+  const label = action === "validate" ? "✅ Validated" : action === "reject" ? "❌ Rejected" : action === "flag" ? "⚑ Flagged" : "✅ Submitted";
+  const color = action === "validate" ? "border-green-500 bg-green-50" : action === "reject" ? "border-red-500 bg-red-50" : "border-yellow-500 bg-yellow-50";
+
+  return (
+    <div className={`fixed bottom-6 right-6 z-50 max-w-sm w-full rounded-xl border-l-4 shadow-2xl p-4 ${color} animate-slide-up`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold text-gray-900 text-sm">{label} — Blockchain Confirmed</p>
+          <p className="text-xs text-gray-500 mt-0.5">Transaction recorded on-chain</p>
+          <p className="text-xs font-mono text-gray-700 mt-1 truncate">{txHash}</p>
+        </div>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none shrink-0">×</button>
+      </div>
+      <button
+        onClick={() => { navigate("/transactions"); onClose(); }}
+        className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-primary-700 bg-white border border-primary-200 rounded-lg py-1.5 hover:bg-primary-50 transition"
+      >
+        <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+        View in Transaction Explorer
+      </button>
+    </div>
+  );
+}
 
 async function openDocument(cid) {
   try {
@@ -45,10 +73,11 @@ function Reviews() {
   const { pendingReviews, fetchPendingReviews, reviewContribution, isLoading } =
     useContributionStore();
   const [selectedReview, setSelectedReview] = useState(null);
-  const [reviewAction, setReviewAction] = useState(null); // 'approve' | 'reject'
+  const [reviewAction, setReviewAction] = useState(null);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewError, setReviewError] = useState(null);
   const [filter, setFilter] = useState("all");
+  const [toast, setToast] = useState(null); // { txHash, action }
 
   useEffect(() => {
     fetchPendingReviews();
@@ -70,6 +99,12 @@ function Reviews() {
       setReviewAction(null);
       setReviewComment("");
       setReviewError(null);
+
+      const txHash = result?.review_tx_hash || result?.blockchain_tx_hash;
+      if (txHash) {
+        setToast({ txHash, action: backendAction });
+        setTimeout(() => setToast(null), 12000);
+      }
     } catch (error) {
       setReviewError(error.message || "Failed to submit review. Please try again.");
     }
@@ -89,6 +124,7 @@ function Reviews() {
   }
 
   return (
+    <>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
@@ -215,6 +251,15 @@ function Reviews() {
         />
       )}
     </div>
+
+    {toast && (
+      <TxToast
+        txHash={toast.txHash}
+        action={toast.action}
+        onClose={() => setToast(null)}
+      />
+    )}
+  </>
   );
 }
 

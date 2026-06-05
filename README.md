@@ -175,16 +175,40 @@ npm run dev
 
 ### MetaMask Configuration
 
-Add the SALF network to MetaMask:
+Add the SALF local network to MetaMask:
 
-- **Network Name**: SALF Besu Network
-- **RPC URL**: http://localhost:8545
-- **Chain ID**: 1337
-- **Currency Symbol**: ETH
+| Field           | Value                        |
+| --------------- | ---------------------------- |
+| Network Name    | SALF Besu Local              |
+| RPC URL         | http://localhost:8545         |
+| Chain ID        | **31337**                    |
+| Currency Symbol | ETH                          |
 
-Import test account (development only):
+> **Note:** Chain ID is `31337` (Hardhat/Anvil default). Do not use `1337`.
 
-- **Private Key**: `0x8f2a55949038a9610f50fb23b5883af3b4ecb3c3bb792cbcefbd1542c692be63`
+#### Deployed Contracts (local Hardhat node)
+
+| Contract                 | Address                                      |
+| ------------------------ | -------------------------------------------- |
+| `SALFAccessControl`      | `0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6` |
+| `AcademicCreditLedger`   | `0x8A791620dd6260079BF849Dc5567aDC3F2FdC318` |
+| `ContributionRegistry`   | `0x610178dA211FEF7D417bC0e6FeD39F05609AD788` |
+
+> Contracts must be redeployed after every Hardhat node restart:
+> ```bash
+> npx hardhat run scripts/deploy.js --network localhost
+> ```
+
+#### Seeded Accounts (development)
+
+| Role            | Name                | Wallet Address                               |
+| --------------- | ------------------- | -------------------------------------------- |
+| Master Admin    | Admin User          | `0x3Ad3616fe1E978a3FcB1AC52806652C0254d00BA` |
+| Institute Admin | Dr. Suresh Kumar    | `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` |
+| HoD (CSE)       | Dr. Rajesh Nair     | `0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC` |
+| Faculty         | Dr. Priya Sharma    | `0x90F79bf6EB2c4f870365E785982E1f101E93b906` |
+| Faculty         | Dr. Vikram Rao      | `0x15d34AAf54267Db7D7c367839AAf71A00a2C6A65` |
+| Faculty         | Dr. Anitha Krishnan | `0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc` |
 
 ## Testing
 
@@ -212,29 +236,80 @@ npm test
 
 ## UGC Credit Mapping Table
 
+Base points are defined in `backend/app/core/config.py` and applied automatically when a faculty member submits a contribution.
+
 | Activity Type                  | Base Points |
 | ------------------------------ | ----------- |
 | Refereed Journal Publication   | 25          |
 | International Authored Book    | 30          |
 | National Authored Book         | 20          |
-| Patent (Granted)               | 50          |
-| Patent (Filed)                 | 25          |
-| International Conference Paper | 15          |
+| Book Chapter                   | 5           |
+| International Conference Paper | 10          |
 | National Conference Paper      | 10          |
-| Major Research Project         | 40          |
-| Minor Research Project         | 20          |
-| Consultancy                    | 30          |
+| Patent (Filed)                 | 15          |
+| Patent (Granted)               | 30          |
+| Editorial Work                 | 10          |
+| Research Project               | 20          |
 
 ### Credit Formula
 
 ```
-Final Credits = Base Points × (1 + Quality Score/100) × (1 + Novelty Multiplier)
+Final Credits = Base Points × (1 + Quality Score / 100) × (1 + Novelty Percentage / 200)
 ```
 
 Where:
 
-- **Quality Score**: AI-evaluated score (0-100) based on 36 benchmark attributes
-- **Novelty Multiplier**: Originality factor (0.0-0.5)
+- **Base Points**: UGC-defined points per contribution category (table above)
+- **Quality Score**: AI-evaluated score (0–100) from the REM service using Sentence-BERT across 36 benchmark attributes
+- **Novelty Percentage**: Originality score (0–100) from embedding variance and innovation keyword density
+
+**Example:** A Refereed Journal (base = 25) with quality score 84 and novelty 62%:
+```
+Final = 25 × (1 + 84/100) × (1 + 62/200) = 25 × 1.84 × 1.31 ≈ 60.2 credits
+```
+
+## Blockchain Ledger — How It Works
+
+Every action in SALF is recorded as an **immutable on-chain transaction** on a private Hyperledger Besu network running IBFT 2.0 Proof-of-Authority consensus.
+
+### What Each Block Represents
+
+Unlike Ethereum mainnet (where blocks are mined on a timer), **Hardhat mines one block per transaction**. Each block number therefore directly maps to an on-chain event:
+
+| Transaction Type       | Smart Contract Function          | Who Triggers       |
+| ---------------------- | -------------------------------- | ------------------ |
+| Contract deployment    | `constructor()`                  | Deployer           |
+| Faculty submission     | `submitRecord()`                 | Faculty member     |
+| AI evaluation          | `recordEvaluation()`             | REM service        |
+| HoD validates          | `validateBlock()`                | Head of Department |
+| HoD rejects            | `rejectContribution()`           | Head of Department |
+| Fraud flag             | `flagContribution()`             | HoD / System       |
+| Role assignment        | `grantRole()`                    | Admin              |
+
+**Example — Block #29** in a live session:
+```
+eth_sendRawTransaction
+  Contract call:    AcademicCreditLedger#validateBlock
+  From:             0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+  To:               0x8A791620dd6260079BF849Dc5567aDC3F2FdC318
+  Value:            0 ETH
+  Gas used:         227592
+```
+
+This means contribution #4 was permanently validated and its final credits written to the blockchain at block 29 — tamper-proof and auditable by any node on the network.
+
+### Admin Dashboard — Live Chain Stats
+
+The Master Admin overview displays a **live blockchain banner** that auto-refreshes every 5 seconds:
+
+| Metric            | Description                                               |
+| ----------------- | --------------------------------------------------------- |
+| Blocks Mined      | Total on-chain transactions since node start              |
+| On-Chain Records  | Contribution + user records written to the ledger         |
+| Credits On-Chain  | Sum of all validated faculty credits across all faculties |
+| Chain ID          | `31337` — IBFT 2.0 PoA private network identifier         |
+
+A green pulsing dot indicates live connectivity to the Besu node.
 
 ## Smart Contracts
 

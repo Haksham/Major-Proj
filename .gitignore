@@ -18,6 +18,9 @@ blockchain/cache/
 
 # Docker runtime data
 docker/ipfs/data/
+docker/blockchain/besu*
+docker/ipfs/data/
+
 
 # IDE
 .vscode/

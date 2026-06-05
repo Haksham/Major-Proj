@@ -25,7 +25,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 NONCE_TTL = 300  # seconds
 
 # The seeded admin wallet — can login without pre-registration
-_ADMIN_WALLET = "0xa0dbb25771341a35d6be0e676a311b4eddd82b71"
+_ADMIN_WALLET = "0x3ad3616fe1e978a3fcb1ac52806652c0254d00ba"
 
 
 def _to_response(u: User) -> UserResponse:

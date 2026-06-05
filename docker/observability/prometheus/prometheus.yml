@@ -6,17 +6,9 @@ scrape_configs:
   - job_name: salf-backend
     metrics_path: /prometheus
     static_configs:
-      - targets: ["backend:8000"]
+      - targets: ["host.docker.internal:8000"]
 
   - job_name: salf-ml-service
     metrics_path: /prometheus
     static_configs:
-      - targets: ["ml-service:8001"]
-
-  - job_name: cadvisor
-    static_configs:
-      - targets: ["cadvisor:8080"]
-
-  - job_name: node-exporter
-    static_configs:
-      - targets: ["node-exporter:9100"]
+      - targets: ["host.docker.internal:8001"]

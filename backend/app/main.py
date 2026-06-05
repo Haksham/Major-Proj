@@ -55,7 +55,7 @@ async def _init_db():
 
     # Seed admin wallet if not present
     from sqlalchemy import select
-    ADMIN_WALLET = "0xa0dbb25771341a35d6be0e676a311b4eddd82b71"
+    ADMIN_WALLET = "0x3ad3616fe1e978a3fcb1ac52806652c0254d00ba"
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(User).where(User.wallet_address == ADMIN_WALLET)
